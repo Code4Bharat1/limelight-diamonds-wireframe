@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect } from 'react';
-import { Bell, CheckCheck, Package, Clock, AlertTriangle, RotateCcw } from 'lucide-react';
+import { Bell, CheckCheck, Package, Clock, AlertTriangle, RotateCcw, Truck, Store, Laptop } from 'lucide-react';
 import { notificationsApi } from '../../../lib/api';
 import { toast } from '../../../components/ui/Toast';
 import { formatDateTime, cn } from '../../../lib/utils';
@@ -8,11 +8,13 @@ import { formatDateTime, cn } from '../../../lib/utils';
 const typeIcons = {
   low_stock: { icon: AlertTriangle, color: 'text-amber-600 bg-amber-50' },
   pending_approval: { icon: Clock, color: 'text-blue-600 bg-blue-50' },
-  stock_movement: { icon: Package, color: 'text-teal-600 bg-teal-50' },
+  dispatch_assigned: { icon: Truck, color: 'text-indigo-600 bg-indigo-50' },
+  dispatch_sent: { icon: Truck, color: 'text-purple-600 bg-purple-50' },
+  dispatch_delivered: { icon: Store, color: 'text-emerald-600 bg-emerald-50' },
+  pos_sync: { icon: Laptop, color: 'text-teal-600 bg-teal-50' },
   damaged: { icon: AlertTriangle, color: 'text-red-600 bg-red-50' },
-  salary: { icon: Bell, color: 'text-purple-600 bg-purple-50' },
-  return: { icon: RotateCcw, color: 'text-orange-600 bg-orange-50' },
-  attendance: { icon: Clock, color: 'text-green-600 bg-green-50' },
+  store_return: { icon: RotateCcw, color: 'text-orange-600 bg-orange-50' },
+  stock_movement: { icon: Package, color: 'text-teal-600 bg-teal-50' },
   system: { icon: Bell, color: 'text-gray-600 bg-gray-50' },
 };
 

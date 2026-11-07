@@ -89,8 +89,10 @@ export default function ProfilePage() {
               <span className="font-semibold text-gray-800">{user?.designation || '—'}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-gray-400">Warehouse:</span>
-              <span className="font-semibold text-gray-800">{user?.assignedWarehouse?.name || 'All Warehouses'}</span>
+              <span className="text-gray-400">Assigned Facility:</span>
+              <span className="font-semibold text-gray-800">
+                {user?.assignedStore?.name ? `Store: ${user.assignedStore.name}` : user?.assignedWarehouse?.name ? `WH: ${user.assignedWarehouse.name}` : 'All Locations'}
+              </span>
             </div>
           </div>
         </div>

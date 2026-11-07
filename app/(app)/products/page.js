@@ -1,45 +1,78 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
-import { Plus, Search, Filter, Edit2, Trash2, QrCode, Package, Eye, AlertTriangle } from 'lucide-react';
+import {
+  Plus, Search, Filter, Edit2, Trash2, QrCode, Package, Eye,
+  AlertTriangle, Sparkles, Building, Printer, Check, X
+} from 'lucide-react';
 import Link from 'next/link';
-import { productsApi } from '../../../lib/api';
+import { productsApi, suppliersApi } from '../../../lib/api';
 import { toast } from '../../../components/ui/Toast';
 import ConfirmDialog from '../../../components/ui/ConfirmDialog';
 import Modal from '../../../components/ui/Modal';
 import StatusBadge from '../../../components/ui/StatusBadge';
 import { formatCurrency, cn } from '../../../lib/utils';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL?.replace('/api', '') || 'http://localhost:5000';
+const CATEGORIES = [
+  'All',
+  'Packaging',
+  'Display Items',
+  'Gifts & Collateral',
+  'Bags & Pouches',
+  'Stationery & Consumables',
+  'Props & VM',
+];
 
-function ProductForm({ product, onSave, onClose }) {
+function ProductForm({ product, suppliers = [], onSave, onClose }) {
   const [form, setForm] = useState({
     name: product?.name || '',
     sku: product?.sku || '',
-    category: product?.category || '',
-    brand: product?.brand || '',
-    model: product?.model || '',
+    category: product?.category || 'Packaging',
+    brand: product?.brand || 'Limelight Diamonds',
     unit: product?.unit || 'pcs',
     purchasePrice: product?.purchasePrice || '',
     sellingPrice: product?.sellingPrice || '',
-    minStockLevel: product?.minStockLevel || 10,
+    minStockLevel: product?.minStockLevel || 50,
+    reorderQty: product?.reorderQty || 100,
+    storageLocation: product?.storageLocation || 'Ground Floor · Zone A · Rack 1',
     description: product?.description || '',
-    trackingType: product?.trackingType || 'quantity',
+    supplierIds: product?.suppliers?.map((s) => s._id) || (suppliers[0] ? [suppliers[0]._id] : []),
     isActive: product?.isActive !== false,
   });
   const [saving, setSaving] = useState(false);
+  const [generatingSKU, setGeneratingSKU] = useState(false);
+
+  const handleAutoGenerateSKU = async () => {
+    setGeneratingSKU(true);
+    try {
+      const res = await productsApi.generateSKU(form.category, form.name);
+      setForm((prev) => ({ ...prev, sku: res.data.sku }));
+      toast('SKU auto-generated!', 'success');
+    } catch {}
+    setGeneratingSKU(false);
+  };
+
+  const toggleSupplier = (sId) => {
+    setForm((prev) => {
+      const current = prev.supplierIds || [];
+      return {
+        ...prev,
+        supplierIds: current.includes(sId)
+          ? current.filter((id) => id !== sId)
+          : [...current, sId],
+      };
+    });
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setSaving(true);
     try {
-      const fd = new FormData();
-      Object.entries(form).forEach(([k, v]) => fd.append(k, v));
       if (product) {
-        await productsApi.update(product._id, fd);
+        await productsApi.update(product._id, form);
         toast('Product updated successfully', 'success');
       } else {
-        await productsApi.create(fd);
-        toast('Product created successfully', 'success');
+        await productsApi.create(form);
+        toast('New product SKU created successfully', 'success');
       }
       onSave();
     } catch (err) {
@@ -50,63 +83,199 @@ function ProductForm({ product, onSave, onClose }) {
   };
 
   return (
-    <form onSubmit={handleSubmit} className="p-6 space-y-4">
+    <form onSubmit={handleSubmit} className="p-6 space-y-4 max-h-[80vh] overflow-y-auto">
       <div className="grid grid-cols-2 gap-4">
-        <div className="form-group col-span-2 md:col-span-1">
-          <label className="label">Product Name *</label>
-          <input className="input" value={form.name} onChange={(e) => setForm({...form, name: e.target.value})} required />
-        </div>
-        <div className="form-group col-span-2 md:col-span-1">
-          <label className="label">SKU *</label>
-          <input className="input uppercase" value={form.sku} onChange={(e) => setForm({...form, sku: e.target.value.toUpperCase()})} required disabled={!!product} />
-        </div>
-        <div className="form-group">
-          <label className="label">Category *</label>
-          <input className="input" value={form.category} onChange={(e) => setForm({...form, category: e.target.value})} required />
-        </div>
-        <div className="form-group">
-          <label className="label">Brand</label>
-          <input className="input" value={form.brand} onChange={(e) => setForm({...form, brand: e.target.value})} />
-        </div>
-        <div className="form-group">
-          <label className="label">Unit</label>
-          <select className="input select" value={form.unit} onChange={(e) => setForm({...form, unit: e.target.value})}>
-            {['pcs', 'roll', 'box', 'set', 'kg', 'litre', 'meter'].map(u => <option key={u}>{u}</option>)}
-          </select>
-        </div>
-        <div className="form-group">
-          <label className="label">Tracking Type</label>
-          <select className="input select" value={form.trackingType} onChange={(e) => setForm({...form, trackingType: e.target.value})}>
-            <option value="quantity">Quantity</option>
-            <option value="batch">Batch</option>
-            <option value="serial">Serial</option>
-          </select>
-        </div>
-        <div className="form-group">
-          <label className="label">Purchase Price (₹)</label>
-          <input type="number" className="input" value={form.purchasePrice} onChange={(e) => setForm({...form, purchasePrice: e.target.value})} />
-        </div>
-        <div className="form-group">
-          <label className="label">Selling Price (₹)</label>
-          <input type="number" className="input" value={form.sellingPrice} onChange={(e) => setForm({...form, sellingPrice: e.target.value})} />
-        </div>
-        <div className="form-group">
-          <label className="label">Min Stock Level</label>
-          <input type="number" className="input" value={form.minStockLevel} onChange={(e) => setForm({...form, minStockLevel: Number(e.target.value)})} />
-        </div>
+        {/* Name */}
         <div className="form-group col-span-2">
-          <label className="label">Description</label>
-          <textarea className="input h-20 resize-none" value={form.description} onChange={(e) => setForm({...form, description: e.target.value})} />
+          <label className="label text-xs">Product / Material Name *</label>
+          <input
+            className="input text-sm"
+            placeholder="e.g. Luxury Solitaire Ring Box (Emerald Velvet)"
+            value={form.name}
+            onChange={(e) => setForm({ ...form, name: e.target.value })}
+            required
+          />
         </div>
+
+        {/* SKU & Auto Generator */}
+        <div className="form-group col-span-2 md:col-span-1">
+          <div className="flex items-center justify-between mb-1">
+            <label className="label text-xs mb-0">SKU Code *</label>
+            <button
+              type="button"
+              onClick={handleAutoGenerateSKU}
+              disabled={generatingSKU}
+              className="text-[11px] text-brand-700 font-bold hover:underline flex items-center gap-1"
+            >
+              <Sparkles className="w-3 h-3 text-brand-600" />
+              <span>Auto-Generate</span>
+            </button>
+          </div>
+          <input
+            className="input uppercase text-sm font-mono font-bold"
+            placeholder="PKG-BX-RNG-01"
+            value={form.sku}
+            onChange={(e) => setForm({ ...form, sku: e.target.value.toUpperCase() })}
+            required
+            disabled={!!product}
+          />
+        </div>
+
+        {/* Category */}
+        <div className="form-group col-span-2 md:col-span-1">
+          <label className="label text-xs">Category *</label>
+          <select
+            className="input select text-sm"
+            value={form.category}
+            onChange={(e) => setForm({ ...form, category: e.target.value })}
+            required
+          >
+            {CATEGORIES.filter((c) => c !== 'All').map((c) => (
+              <option key={c} value={c}>{c}</option>
+            ))}
+          </select>
+        </div>
+
+        {/* Brand */}
+        <div className="form-group">
+          <label className="label text-xs">Brand Label</label>
+          <input
+            className="input text-sm"
+            value={form.brand}
+            onChange={(e) => setForm({ ...form, brand: e.target.value })}
+          />
+        </div>
+
+        {/* Unit */}
+        <div className="form-group">
+          <label className="label text-xs">Unit of Measure</label>
+          <select
+            className="input select text-sm"
+            value={form.unit}
+            onChange={(e) => setForm({ ...form, unit: e.target.value })}
+          >
+            {['pcs', 'pack', 'set', 'roll', 'box', 'meter'].map((u) => (
+              <option key={u} value={u}>{u}</option>
+            ))}
+          </select>
+        </div>
+
+        {/* Cost & Transfer Price */}
+        <div className="form-group">
+          <label className="label text-xs">Procurement / Purchase Cost (₹)</label>
+          <input
+            type="number"
+            className="input text-sm"
+            value={form.purchasePrice}
+            onChange={(e) => setForm({ ...form, purchasePrice: e.target.value })}
+          />
+        </div>
+        <div className="form-group">
+          <label className="label text-xs">Internal Valuation / Transfer (₹)</label>
+          <input
+            type="number"
+            className="input text-sm"
+            value={form.sellingPrice}
+            onChange={(e) => setForm({ ...form, sellingPrice: e.target.value })}
+          />
+        </div>
+
+        {/* Thresholds */}
+        <div className="form-group">
+          <label className="label text-xs">Minimum Stock Threshold</label>
+          <input
+            type="number"
+            className="input text-sm"
+            value={form.minStockLevel}
+            onChange={(e) => setForm({ ...form, minStockLevel: Number(e.target.value) })}
+          />
+        </div>
+        <div className="form-group">
+          <label className="label text-xs">Standard Reorder Quantity</label>
+          <input
+            type="number"
+            className="input text-sm"
+            value={form.reorderQty}
+            onChange={(e) => setForm({ ...form, reorderQty: Number(e.target.value) })}
+          />
+        </div>
+
+        {/* Storage Location */}
+        <div className="form-group col-span-2">
+          <label className="label text-xs">Default Warehouse Storage Bin</label>
+          <input
+            className="input text-sm"
+            placeholder="Ground Floor · Zone A · Rack R-01"
+            value={form.storageLocation}
+            onChange={(e) => setForm({ ...form, storageLocation: e.target.value })}
+          />
+        </div>
+
+        {/* Multiple Vendor Mapping (Feature 5 in Product Management) */}
+        <div className="col-span-2 space-y-2 p-3 bg-gray-50 rounded-xl border border-gray-100">
+          <label className="label text-xs font-bold text-gray-800 mb-1 flex items-center justify-between">
+            <span>Mapped Vendors / Suppliers</span>
+            <span className="text-[10px] text-gray-400 font-normal">Select all vendors that supply this SKU</span>
+          </label>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            {suppliers.map((s) => {
+              const isSelected = form.supplierIds?.includes(s._id);
+              return (
+                <div
+                  key={s._id}
+                  onClick={() => toggleSupplier(s._id)}
+                  className={`flex items-center gap-2 p-2 rounded-lg border text-xs cursor-pointer transition-all ${
+                    isSelected ? 'bg-brand-50 border-brand-300 text-brand-900 font-bold' : 'bg-white border-gray-200 text-gray-600'
+                  }`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={isSelected}
+                    onChange={() => {}}
+                    className="accent-brand-700 w-3.5 h-3.5 rounded"
+                  />
+                  <div className="truncate">
+                    <div className="truncate leading-tight">{s.name}</div>
+                    <div className="text-[10px] opacity-70">{s.code} · {s.city}</div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Description */}
+        <div className="form-group col-span-2">
+          <label className="label text-xs">Description & Specifications</label>
+          <textarea
+            className="input h-16 resize-none text-sm"
+            placeholder="Material specs, velvet finish, branding dimensions, etc."
+            value={form.description}
+            onChange={(e) => setForm({ ...form, description: e.target.value })}
+          />
+        </div>
+
+        {/* Status */}
         <div className="form-group col-span-2 flex items-center gap-2">
-          <input type="checkbox" id="isActive" checked={form.isActive} onChange={(e) => setForm({...form, isActive: e.target.checked})} className="w-4 h-4 accent-brand-700" />
-          <label htmlFor="isActive" className="text-sm font-medium text-gray-700">Active</label>
+          <input
+            type="checkbox"
+            id="isActive"
+            checked={form.isActive}
+            onChange={(e) => setForm({ ...form, isActive: e.target.checked })}
+            className="w-4 h-4 accent-brand-700"
+          />
+          <label htmlFor="isActive" className="text-xs font-semibold text-gray-700 cursor-pointer">
+            Active in Catalog & Store Ordering
+          </label>
         </div>
       </div>
-      <div className="flex gap-3 pt-2">
-        <button type="button" className="btn-secondary flex-1" onClick={onClose}>Cancel</button>
-        <button type="submit" className="btn-primary flex-1" disabled={saving}>
-          {saving ? 'Saving...' : (product ? 'Update Product' : 'Add Product')}
+
+      <div className="flex gap-3 pt-3 border-t border-gray-100">
+        <button type="button" className="btn-secondary flex-1 text-xs" onClick={onClose}>
+          Cancel
+        </button>
+        <button type="submit" className="btn-primary flex-1 text-xs" disabled={saving}>
+          {saving ? 'Saving...' : product ? 'Update SKU' : 'Create Product SKU'}
         </button>
       </div>
     </form>
@@ -115,226 +284,338 @@ function ProductForm({ product, onSave, onClose }) {
 
 export default function ProductsPage() {
   const [products, setProducts] = useState([]);
+  const [suppliers, setSuppliers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState('All');
   const [filterLowStock, setFilterLowStock] = useState(false);
   const [total, setTotal] = useState(0);
-  const [page, setPage] = useState(1);
   const [modalOpen, setModalOpen] = useState(false);
   const [editProduct, setEditProduct] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [deleting, setDeleting] = useState(false);
-  const [qrProduct, setQrProduct] = useState(null);
+  const [qrModalProduct, setQrModalProduct] = useState(null);
 
   const fetchProducts = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await productsApi.getAll({ search, lowStock: filterLowStock, page, limit: 20 });
-      setProducts(res.data.data || []);
-      setTotal(res.data.total || 0);
+      const [prodRes, supRes] = await Promise.all([
+        productsApi.getAll({
+          search,
+          category: selectedCategory === 'All' ? undefined : selectedCategory,
+          lowStock: filterLowStock,
+          limit: 100,
+        }),
+        suppliersApi.getAll(),
+      ]);
+      setProducts(prodRes.data.data || []);
+      setTotal(prodRes.data.total || 0);
+      setSuppliers(supRes.data.data || []);
     } catch {}
     setLoading(false);
-  }, [search, filterLowStock, page]);
+  }, [search, selectedCategory, filterLowStock]);
 
-  useEffect(() => { fetchProducts(); }, [fetchProducts]);
+  useEffect(() => {
+    fetchProducts();
+  }, [fetchProducts]);
 
   const handleDelete = async () => {
     if (!deleteTarget) return;
     setDeleting(true);
     try {
       await productsApi.delete(deleteTarget._id);
-      toast('Product deactivated', 'success');
+      toast('Product SKU deactivated', 'success');
       setDeleteTarget(null);
       fetchProducts();
-    } catch (err) {
-      toast(err.response?.data?.message || 'Failed to delete', 'error');
+    } catch {
+      toast('Failed to delete product', 'error');
     }
     setDeleting(false);
   };
 
-  const handleGenerateQR = async (product) => {
-    try {
-      await productsApi.generateQR(product._id);
-      fetchProducts();
-      toast('QR code regenerated', 'success');
-    } catch {}
-  };
-
   return (
-    <div className="space-y-5 animate-fade-in">
-      <div className="page-header">
+    <div className="space-y-5 animate-fade-in pb-12">
+      {/* Header */}
+      <div className="page-header flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
-          <h1 className="page-title">Products</h1>
-          <p className="text-gray-500 text-sm">{total} products total</p>
+          <h1 className="page-title">Products & SKU Catalog</h1>
+          <p className="text-gray-500 text-xs">
+            Packaging, Showroom Displays, Luxury Gift Kits, Carry Bags & Stationery
+          </p>
         </div>
-        <button id="add-product-btn" className="btn-primary" onClick={() => { setEditProduct(null); setModalOpen(true); }}>
-          <Plus className="w-4 h-4" /> Add Product
-        </button>
+        <div className="flex items-center gap-2">
+          <Link href="/qr-codes" className="btn-secondary btn-sm flex items-center gap-1.5 text-xs">
+            <QrCode className="w-3.5 h-3.5" /> Printable QR Labels
+          </Link>
+          <button
+            className="btn-primary btn-sm flex items-center gap-1.5 text-xs"
+            onClick={() => {
+              setEditProduct(null);
+              setModalOpen(true);
+            }}
+          >
+            <Plus className="w-3.5 h-3.5" /> Add New SKU
+          </button>
+        </div>
       </div>
 
-      {/* Filters */}
-      <div className="flex flex-col sm:flex-row gap-3">
-        <div className="relative flex-1">
+      {/* Category Pills Filter */}
+      <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-hide">
+        {CATEGORIES.map((cat) => (
+          <button
+            key={cat}
+            onClick={() => setSelectedCategory(cat)}
+            className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all ${
+              selectedCategory === cat
+                ? 'bg-brand-700 text-white shadow-sm'
+                : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'
+            }`}
+          >
+            {cat}
+          </button>
+        ))}
+      </div>
+
+      {/* Search & Low Stock Toggle */}
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+        <div className="relative flex-1 max-w-md">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
           <input
-            type="text" className="input pl-9"
-            placeholder="Search by name, SKU, brand..."
-            value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+            className="input pl-9 text-xs"
+            placeholder="Search SKU code, product title or category..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
           />
         </div>
+
         <button
-          className={cn('btn-sm flex items-center gap-2', filterLowStock ? 'btn-primary' : 'btn-secondary')}
           onClick={() => setFilterLowStock(!filterLowStock)}
+          className={`btn-sm flex items-center gap-1.5 text-xs border ${
+            filterLowStock
+              ? 'bg-amber-100 text-amber-900 border-amber-300 font-bold'
+              : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+          }`}
         >
-          <AlertTriangle className="w-3.5 h-3.5" />
-          {filterLowStock ? 'All Products' : 'Low Stock Only'}
+          <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />
+          <span>Low Stock Items Only</span>
         </button>
       </div>
 
-      {/* Table */}
+      {/* Products Table */}
       <div className="table-wrapper card p-0">
-        <table className="table">
+        <table className="table text-xs">
           <thead>
             <tr>
-              <th>Product</th>
-              <th>SKU</th>
+              <th>SKU / Product</th>
               <th>Category</th>
-              <th>Stock</th>
-              <th>Price</th>
+              <th>Warehouse Stock</th>
+              <th>Store Stock</th>
+              <th>Total Available</th>
+              <th>Mapped Vendors</th>
+              <th>Storage Location</th>
+              <th>Unit Cost</th>
               <th>Status</th>
               <th>Actions</th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
-              Array.from({ length: 5 }).map((_, i) => (
+              Array.from({ length: 6 }).map((_, i) => (
                 <tr key={i}>
-                  {Array.from({ length: 7 }).map((_, j) => (
+                  {Array.from({ length: 10 }).map((_, j) => (
                     <td key={j}><div className="h-4 bg-gray-100 rounded animate-pulse" /></td>
                   ))}
                 </tr>
               ))
             ) : products.length === 0 ? (
-              <tr><td colSpan={7} className="text-center py-12 text-gray-400">
-                <div className="flex flex-col items-center gap-2">
-                  <Package className="w-8 h-8 text-gray-300" />
-                  <span>No products found</span>
-                </div>
-              </td></tr>
-            ) : products.map((p) => (
-              <tr key={p._id}>
-                <td>
-                  <div className="flex items-center gap-3">
-                    <div className="w-9 h-9 rounded-lg bg-gray-100 flex items-center justify-center overflow-hidden shrink-0">
-                      {p.imageUrl ? (
-                        <img src={`${API_URL}${p.imageUrl}`} alt={p.name} className="w-full h-full object-cover" />
-                      ) : <Package className="w-4 h-4 text-gray-400" />}
-                    </div>
-                    <div>
-                      <div className="font-semibold text-gray-900 text-sm max-w-[160px] truncate">{p.name}</div>
-                      <div className="text-xs text-gray-400">{p.brand}</div>
-                    </div>
-                  </div>
-                </td>
-                <td className="font-mono text-xs text-gray-600">{p.sku}</td>
-                <td className="text-gray-600">{p.category}</td>
-                <td>
-                  <span className={cn(
-                    'font-bold',
-                    p.currentStock <= p.minStockLevel ? 'text-red-600' : 'text-gray-900'
-                  )}>
-                    {p.currentStock?.toLocaleString('en-IN')}
-                  </span>
-                  <span className="text-gray-400 text-xs ml-1">{p.unit}</span>
-                  {p.currentStock <= p.minStockLevel && (
-                    <div className="text-xs text-red-500 flex items-center gap-1">
-                      <AlertTriangle className="w-2.5 h-2.5" /> Low
-                    </div>
-                  )}
-                </td>
-                <td className="text-xs">
-                  <div>Buy: {formatCurrency(p.purchasePrice)}</div>
-                  <div className="text-gray-400">Sell: {formatCurrency(p.sellingPrice)}</div>
-                </td>
-                <td>
-                  <StatusBadge status={p.isActive ? 'active' : 'inactive'} />
-                </td>
-                <td>
-                  <div className="flex items-center gap-1.5">
-                    <Link href={`/products/${p._id}`} className="btn-ghost btn-icon min-h-0 p-1.5 text-gray-400 hover:text-brand-700">
-                      <Eye className="w-3.5 h-3.5" />
-                    </Link>
-                    <button className="btn-ghost btn-icon min-h-0 p-1.5 text-gray-400 hover:text-brand-700"
-                      onClick={() => { setEditProduct(p); setModalOpen(true); }}>
-                      <Edit2 className="w-3.5 h-3.5" />
-                    </button>
-                    <button className="btn-ghost btn-icon min-h-0 p-1.5 text-gray-400 hover:text-brand-700"
-                      onClick={() => setQrProduct(p)}>
-                      <QrCode className="w-3.5 h-3.5" />
-                    </button>
-                    <button className="btn-ghost btn-icon min-h-0 p-1.5 text-gray-400 hover:text-red-600"
-                      onClick={() => setDeleteTarget(p)}>
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
+              <tr>
+                <td colSpan={10} className="text-center py-12 text-gray-400">
+                  <Package className="w-8 h-8 mx-auto text-gray-300 mb-2" />
+                  No matching products or SKUs found.
                 </td>
               </tr>
-            ))}
+            ) : (
+              products.map((p) => {
+                const isLow = p.currentStock <= p.minStockLevel;
+                return (
+                  <tr key={p._id} className="hover:bg-gray-50/80">
+                    <td>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => setQrModalProduct(p)}
+                          className="w-7 h-7 rounded-lg bg-gray-100 hover:bg-brand-50 flex items-center justify-center text-gray-500 hover:text-brand-700 shrink-0"
+                          title="View QR Code"
+                        >
+                          <QrCode className="w-4 h-4" />
+                        </button>
+                        <div className="min-w-0">
+                          <Link href={`/products/${p._id}`} className="font-bold text-gray-900 hover:text-brand-700 hover:underline block truncate">
+                            {p.name}
+                          </Link>
+                          <span className="font-mono text-[10px] text-brand-700 bg-brand-50 px-1.5 py-0.2 rounded font-semibold">
+                            {p.sku}
+                          </span>
+                        </div>
+                      </div>
+                    </td>
+
+                    <td>
+                      <span className="badge bg-gray-100 text-gray-700 text-[10px]">
+                        {p.category}
+                      </span>
+                    </td>
+
+                    <td>
+                      <span className="font-semibold text-gray-800">
+                        {p.warehouseTotalStock?.toLocaleString('en-IN') || 0}{' '}
+                        <span className="text-[10px] text-gray-400 font-normal">{p.unit}</span>
+                      </span>
+                    </td>
+
+                    <td>
+                      <span className="font-semibold text-teal-800">
+                        {p.storeTotalStock?.toLocaleString('en-IN') || 0}{' '}
+                        <span className="text-[10px] text-gray-400 font-normal">{p.unit}</span>
+                      </span>
+                    </td>
+
+                    <td>
+                      <div className="flex items-center gap-1.5">
+                        <span className={`font-bold ${isLow ? 'text-red-600' : 'text-gray-900'}`}>
+                          {p.currentStock?.toLocaleString('en-IN')} {p.unit}
+                        </span>
+                        {isLow && (
+                          <span className="badge bg-red-100 text-red-700 text-[9px] py-0 px-1">
+                            Min: {p.minStockLevel}
+                          </span>
+                        )}
+                      </div>
+                    </td>
+
+                    <td>
+                      <div className="text-[11px] text-gray-600 truncate max-w-[140px]">
+                        {p.suppliers && p.suppliers.length > 0 ? (
+                          p.suppliers.map((s) => s.name.split(' ')[0]).join(', ')
+                        ) : (
+                          <span className="text-gray-400">—</span>
+                        )}
+                      </div>
+                    </td>
+
+                    <td className="text-gray-500 text-[11px]">
+                      {p.storageLocation || '—'}
+                    </td>
+
+                    <td className="font-medium text-gray-800">
+                      {formatCurrency(p.purchasePrice)}
+                    </td>
+
+                    <td>
+                      <StatusBadge status={p.isActive ? 'active' : 'inactive'} />
+                    </td>
+
+                    <td>
+                      <div className="flex items-center gap-1">
+                        <Link
+                          href={`/products/${p._id}`}
+                          className="btn-ghost btn-icon p-1 min-h-0 text-gray-400 hover:text-brand-700"
+                          title="View Details"
+                        >
+                          <Eye className="w-3.5 h-3.5" />
+                        </Link>
+                        <button
+                          className="btn-ghost btn-icon p-1 min-h-0 text-gray-400 hover:text-blue-600"
+                          onClick={() => {
+                            setEditProduct(p);
+                            setModalOpen(true);
+                          }}
+                          title="Edit Product"
+                        >
+                          <Edit2 className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          className="btn-ghost btn-icon p-1 min-h-0 text-gray-400 hover:text-red-600"
+                          onClick={() => setDeleteTarget(p)}
+                          title="Deactivate SKU"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })
+            )}
           </tbody>
         </table>
       </div>
 
-      {/* Pagination */}
-      {total > 20 && (
-        <div className="flex items-center justify-between text-sm text-gray-500">
-          <span>Showing {(page-1)*20+1}–{Math.min(page*20,total)} of {total}</span>
-          <div className="flex gap-2">
-            <button className="btn-secondary btn-sm" disabled={page===1} onClick={() => setPage(page-1)}>Prev</button>
-            <button className="btn-secondary btn-sm" disabled={page*20>=total} onClick={() => setPage(page+1)}>Next</button>
-          </div>
-        </div>
-      )}
-
-      {/* Add/Edit Modal */}
-      <Modal isOpen={modalOpen} onClose={() => setModalOpen(false)} title={editProduct ? 'Edit Product' : 'Add New Product'} size="lg">
-        <ProductForm product={editProduct} onSave={() => { setModalOpen(false); fetchProducts(); }} onClose={() => setModalOpen(false)} />
+      {/* Product Form Modal */}
+      <Modal
+        isOpen={modalOpen}
+        onClose={() => setModalOpen(false)}
+        title={editProduct ? `Edit SKU: ${editProduct.sku}` : 'Add New Product SKU'}
+        size="lg"
+      >
+        <ProductForm
+          product={editProduct}
+          suppliers={suppliers}
+          onSave={() => {
+            setModalOpen(false);
+            fetchProducts();
+          }}
+          onClose={() => setModalOpen(false)}
+        />
       </Modal>
 
-      {/* QR Modal */}
-      {qrProduct && (
-        <Modal isOpen={!!qrProduct} onClose={() => setQrProduct(null)} title="QR Code" size="sm">
-          <div className="p-6 flex flex-col items-center gap-4">
-            {qrProduct.qrCodeImage ? (
-              <img src={qrProduct.qrCodeImage} alt="QR Code" className="w-48 h-48" />
-            ) : (
-              <div className="w-48 h-48 bg-gray-100 rounded-2xl flex items-center justify-center">
-                <QrCode className="w-12 h-12 text-gray-300" />
+      {/* QR Code Tag Modal */}
+      <Modal
+        isOpen={!!qrModalProduct}
+        onClose={() => setQrModalProduct(null)}
+        title="Printable QR Asset Tag"
+        size="sm"
+      >
+        {qrModalProduct && (
+          <div className="p-6 text-center space-y-4">
+            <div className="p-4 border-2 border-dashed border-gray-300 rounded-2xl bg-white inline-block shadow-inner">
+              {qrModalProduct.qrCodeImage ? (
+                <img
+                  src={qrModalProduct.qrCodeImage}
+                  alt={qrModalProduct.sku}
+                  className="w-48 h-48 mx-auto"
+                />
+              ) : (
+                <QrCode className="w-40 h-40 text-gray-400 mx-auto" />
+              )}
+              <div className="font-mono text-xs font-bold text-gray-900 mt-2">
+                {qrModalProduct.sku}
               </div>
-            )}
-            <div className="text-center">
-              <div className="font-bold text-gray-900">{qrProduct.name}</div>
-              <div className="text-sm text-gray-500 font-mono">{qrProduct.qrCodeValue}</div>
+              <div className="text-[11px] text-gray-500 font-medium truncate max-w-[200px] mx-auto">
+                {qrModalProduct.name}
+              </div>
             </div>
-            <div className="flex gap-3 w-full">
-              <button className="btn-secondary flex-1" onClick={() => { handleGenerateQR(qrProduct); }}>
-                <QrCode className="w-4 h-4" /> Regenerate
-              </button>
-              <button className="btn-primary flex-1" onClick={() => window.print()}>
-                🖨️ Print
-              </button>
-            </div>
+            <p className="text-xs text-gray-400">
+              Compatible with handheld Zebra/Honeywell barcode & QR tag scanners
+            </p>
+            <button
+              onClick={() => {
+                window.print();
+              }}
+              className="btn-primary w-full text-xs flex items-center justify-center gap-2"
+            >
+              <Printer className="w-3.5 h-3.5" /> Print Tag Label
+            </button>
           </div>
-        </Modal>
-      )}
+        )}
+      </Modal>
 
-      {/* Delete Confirm */}
+      {/* Delete/Deactivate Confirmation Dialog */}
       <ConfirmDialog
         isOpen={!!deleteTarget}
         onClose={() => setDeleteTarget(null)}
         onConfirm={handleDelete}
-        title="Deactivate Product"
-        message={`Are you sure you want to deactivate "${deleteTarget?.name}"? It won't appear in active lists.`}
-        confirmLabel="Deactivate"
+        title="Deactivate Product SKU"
+        message={`Are you sure you want to deactivate "${deleteTarget?.name}" (${deleteTarget?.sku})?`}
         loading={deleting}
       />
     </div>

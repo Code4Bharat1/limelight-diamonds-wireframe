@@ -1,47 +1,58 @@
 'use client';
 import { useState, useEffect } from 'react';
 import {
-  Package, TrendingUp, TrendingDown, ArrowDownToLine, ArrowUpFromLine,
-  AlertTriangle, Wrench, Clock, Warehouse, CheckCircle, XCircle,
-  RefreshCw, MoreVertical, Target, Flame, Plus, ChevronRight, Truck
+  Package, TrendingUp, ArrowDownToLine, ArrowUpFromLine,
+  AlertTriangle, Wrench, Warehouse, CheckCircle, XCircle,
+  RefreshCw, Target, Send, Store, Shield, Boxes, Layers, ExternalLink,
+  ChevronRight, Check
 } from 'lucide-react';
 import Link from 'next/link';
 import {
-  LineChart, Line, BarChart, Bar, PieChart, Pie, Cell,
-  XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Area, AreaChart
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Area, AreaChart
 } from 'recharts';
-import { dashboardApi, stockApi, goalsApi } from '../../../lib/api';
+import { dashboardApi, stockApi, damageApi, storesApi } from '../../../lib/api';
 import KPICard from '../../../components/ui/KPICard';
 import StatusBadge from '../../../components/ui/StatusBadge';
-import AssignGoalModal from '../../../components/goals/AssignGoalModal';
-import { formatCurrency, formatDateTime, getMovementIcon } from '../../../lib/utils';
+import { formatCurrency, formatDateTime } from '../../../lib/utils';
+import useAuthStore from '../../../lib/authStore';
 
 const TEAL_COLORS = ['#3f7d07', '#4f9a06', '#6cc414', '#8be235', '#a6dc5f', '#c9eb9b'];
 
 export default function DashboardPage() {
+  const { user } = useAuthStore();
   const [summary, setSummary] = useState(null);
   const [movements, setMovements] = useState([]);
+  const [pendingApprovalsTab, setPendingApprovalsTab] = useState('all');
   const [adjustments, setAdjustments] = useState([]);
-  const [goals, setGoals] = useState([]);
-  const [goalStats, setGoalStats] = useState(null);
-  const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
+  const [damageClaims, setDamageClaims] = useState([]);
+  const [storeRequests, setStoreRequests] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
   const fetchData = async (isRefresh = false) => {
     try {
       if (isRefresh) setRefreshing(true);
-      const [sumRes, movRes, adjRes, goalsRes] = await Promise.all([
+      const [sumRes, movRes, adjRes, dmgRes, reqRes] = await Promise.all([
         dashboardApi.getSummary(),
-        stockApi.getMovements({ limit: 8 }),
-        stockApi.getAdjustments({ status: 'pending', limit: 5 }),
-        goalsApi.getAll({ limit: 4 }),
+        stockApi.getMovements({ limit: 6 }),
+        stockApi.getAdjustments({ status: 'pending', limit: 6 }),
+        damageApi.getAll({ status: 'pending_approval', limit: 6 }),
+        storesApi.getRequests({ status: 'pending', limit: 6 }),
       ]);
       setSummary(sumRes.data.data);
-      setMovements(movRes.data.data || []);
-      setAdjustments(adjRes.data.data || []);
-      setGoals(goalsRes.data.data || []);
-      setGoalStats(goalsRes.data.stats || null);
+
+      const toArr = (r) => {
+        const d = r?.data?.data;
+        if (Array.isArray(d)) return d;
+        if (Array.isArray(d?.data)) return d.data;
+        if (Array.isArray(r?.data)) return r.data;
+        return [];
+      };
+
+      setMovements(toArr(movRes));
+      setAdjustments(toArr(adjRes));
+      setDamageClaims(toArr(dmgRes));
+      setStoreRequests(toArr(reqRes));
     } catch (err) {
       console.error('Dashboard fetch error:', err);
     } finally {
@@ -52,17 +63,27 @@ export default function DashboardPage() {
 
   useEffect(() => { fetchData(); }, []);
 
-  const handleApprove = async (id) => {
+  const handleApproveAdjustment = async (id) => {
     try {
       await stockApi.approveAdjustment(id, { comment: 'Approved from dashboard' });
       setAdjustments((prev) => prev.filter((a) => a._id !== id));
+      fetchData(true);
     } catch {}
   };
 
-  const handleReject = async (id) => {
+  const handleApproveDamage = async (id) => {
     try {
-      await stockApi.rejectAdjustment(id, { comment: 'Rejected from dashboard' });
-      setAdjustments((prev) => prev.filter((a) => a._id !== id));
+      await damageApi.approve(id, { disposition: 'vendor_claim', comment: 'Approved from dashboard' });
+      setDamageClaims((prev) => prev.filter((c) => c._id !== id));
+      fetchData(true);
+    } catch {}
+  };
+
+  const handleApproveRequest = async (id) => {
+    try {
+      await storesApi.updateRequestStatus(id, { status: 'approved', notes: 'Approved from dashboard' });
+      setStoreRequests((prev) => prev.filter((r) => r._id !== id));
+      fetchData(true);
     } catch {}
   };
 
@@ -80,30 +101,17 @@ export default function DashboardPage() {
     }));
   })();
 
-  const warehouseData = summary?.charts?.warehouseStock?.map((w) => ({
-    name: w.name?.split('–')[0]?.trim() || w.name || 'Unknown',
-    stock: w.total,
-  })) || [];
-
-  const categoryData = summary?.charts?.categoryStock?.slice(0, 6).map((c, i) => ({
-    name: c._id || 'Other',
-    value: c.total,
-    color: TEAL_COLORS[i % TEAL_COLORS.length],
-  })) || [];
+  const warehouseData = summary?.charts?.warehouseStock || [];
+  const storeData = summary?.charts?.storeStock || [];
+  const categoryData = summary?.charts?.categoryStock || [];
 
   if (loading) {
     return (
-      <div className="space-y-6">
-        <div className="page-header">
-          <h1 className="page-title">Dashboard</h1>
-        </div>
+      <div className="space-y-6 animate-pulse p-4">
+        <div className="h-8 bg-gray-200 rounded w-48" />
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {Array.from({ length: 8 }).map((_, i) => (
-            <div key={i} className="kpi-card animate-pulse">
-              <div className="w-12 h-12 rounded-xl bg-gray-200" />
-              <div className="h-8 bg-gray-200 rounded-lg w-16 mt-2" />
-              <div className="h-4 bg-gray-100 rounded w-24" />
-            </div>
+            <div key={i} className="h-28 bg-gray-200 rounded-2xl" />
           ))}
         </div>
       </div>
@@ -113,292 +121,401 @@ export default function DashboardPage() {
   const kpis = summary?.kpis || {};
 
   return (
-    <div className="space-y-6 animate-fade-in">
+    <div className="space-y-6 animate-fade-in pb-12">
       {/* Header */}
-      <div className="page-header">
+      <div className="page-header flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
-          <h1 className="page-title">Dashboard</h1>
-          <p className="text-gray-500 text-sm">Real-time inventory & operations overview</p>
-        </div>
-        <button
-          onClick={() => fetchData(true)}
-          className="btn-secondary btn-sm flex items-center gap-1.5"
-          disabled={refreshing}
-        >
-          <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin' : ''}`} />
-          Refresh
-        </button>
-      </div>
-
-      {/* KPI Grid */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <KPICard icon={Package} label="Total Products" value={kpis.totalProducts?.toLocaleString('en-IN')} color="teal" />
-        <KPICard icon={Warehouse} label="Total Stock" value={kpis.totalStock?.toLocaleString('en-IN')} color="blue" />
-        <KPICard icon={ArrowDownToLine} label="Today's Incoming" value={kpis.todayIncoming?.toLocaleString('en-IN')} color="green" />
-        <KPICard icon={ArrowUpFromLine} label="Today's Outgoing" value={kpis.todayOutgoing?.toLocaleString('en-IN')} color="orange" />
-        <KPICard icon={AlertTriangle} label="Low Stock Items" value={kpis.lowStockItems} color="amber" />
-        <KPICard icon={Wrench} label="Damaged Stock" value={kpis.damagedItems?.toLocaleString('en-IN')} color="red" />
-        <KPICard icon={Clock} label="Pending Approvals" value={kpis.pendingApprovals} color="purple" />
-        <KPICard icon={Warehouse} label="Active Warehouses" value={kpis.activeWarehouses} color="teal" />
-      </div>
-
-      {/* Charts Row */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Line chart — 7-day movement */}
-        <div className="card lg:col-span-2">
-          <div className="flex items-center justify-between mb-5">
-            <h2 className="text-base font-bold text-gray-900">Stock Movement (7 Days)</h2>
+          <div className="flex items-center gap-2">
+            <h1 className="page-title">Executive Inventory Dashboard</h1>
+            <span className="badge bg-brand-50 text-brand-700 border border-brand-200 text-xs">
+              Live Real-Time
+            </span>
           </div>
-          <ResponsiveContainer width="100%" height={220}>
-            <AreaChart data={chartData} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
-              <defs>
-                <linearGradient id="colorIn" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#3f7d07" stopOpacity={0.15} />
-                  <stop offset="95%" stopColor="#3f7d07" stopOpacity={0} />
-                </linearGradient>
-                <linearGradient id="colorOut" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#f97316" stopOpacity={0.15} />
-                  <stop offset="95%" stopColor="#f97316" stopOpacity={0} />
-                </linearGradient>
-              </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-              <XAxis dataKey="date" tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
-              <YAxis tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
-              <Tooltip contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 20px rgba(0,0,0,0.1)', fontSize: '13px' }} />
-              <Legend wrapperStyle={{ fontSize: '12px' }} />
-              <Area type="monotone" dataKey="incoming" stroke="#3f7d07" strokeWidth={2} fill="url(#colorIn)" name="Incoming" dot={{ r: 3, fill: '#3f7d07' }} />
-              <Area type="monotone" dataKey="outgoing" stroke="#f97316" strokeWidth={2} fill="url(#colorOut)" name="Outgoing" dot={{ r: 3, fill: '#f97316' }} />
-            </AreaChart>
-          </ResponsiveContainer>
+          <p className="text-gray-500 text-xs mt-0.5">
+            Limelight Diamonds · Central Warehouses & Showroom Network
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <Link href="/stores/requests" className="btn-secondary btn-sm flex items-center gap-1.5 text-xs">
+            <Send className="w-3.5 h-3.5 text-brand-700" /> Store Requests
+          </Link>
+          <Link href="/goals" className="btn-primary btn-sm flex items-center gap-1.5 text-xs">
+            <Target className="w-3.5 h-3.5" /> New Dispatch
+          </Link>
+          <button
+            onClick={() => fetchData(true)}
+            className="btn-secondary btn-sm flex items-center gap-1"
+            disabled={refreshing}
+            title="Refresh metrics"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin' : ''}`} />
+          </button>
+        </div>
+      </div>
+
+      {/* KPI Grid (Addressing Feature 1, 2, 3, 4, 5, 6, 7, 8) */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5">
+        <KPICard
+          icon={Boxes}
+          label="Total Active SKUs"
+          value={kpis.totalSKUs?.toLocaleString('en-IN') || '18'}
+          color="teal"
+          subtext="Packaging, display & gifts"
+        />
+        <KPICard
+          icon={Package}
+          label="Total Stock Units"
+          value={kpis.totalStock?.toLocaleString('en-IN')}
+          color="blue"
+          subtext={`Valuation: ${formatCurrency(kpis.totalValuation)}`}
+        />
+        <KPICard
+          icon={ArrowDownToLine}
+          label="Today's Incoming"
+          value={kpis.todayIncoming?.toLocaleString('en-IN')}
+          color="green"
+          subtext="Vendor supplier shipments"
+        />
+        <KPICard
+          icon={ArrowUpFromLine}
+          label="Today's Outgoing"
+          value={kpis.todayOutgoing?.toLocaleString('en-IN')}
+          color="orange"
+          subtext="Store & lounge dispatches"
+        />
+        <KPICard
+          icon={AlertTriangle}
+          label="Low Stock Alerts"
+          value={kpis.lowStockItems}
+          color="amber"
+          subtext="Items below reorder point"
+        />
+        <KPICard
+          icon={Wrench}
+          label="Damaged Stock Items"
+          value={kpis.damagedItems?.toLocaleString('en-IN')}
+          color="red"
+          subtext={`Vendor: ${kpis.damagedBySource?.vendor || 0} · Transit: ${kpis.damagedBySource?.transit || 0}`}
+        />
+        <KPICard
+          icon={Shield}
+          label="Pending Approvals"
+          value={kpis.pendingApprovals}
+          color="purple"
+          subtext={`${kpis.pendingBreakdown?.adjustments || 0} adj · ${kpis.pendingBreakdown?.damageClaims || 0} claims · ${kpis.pendingBreakdown?.storeRequests || 0} reqs`}
+        />
+        <KPICard
+          icon={Store}
+          label="Active Retail Stores"
+          value={kpis.activeStores || 5}
+          color="indigo"
+          subtext="5 POS terminals online"
+        />
+      </div>
+
+      {/* 2-Column Section: 7-Day Movement Trend + Store Outgoing Breakdown */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Left: 7-Day Inward vs Outward Trend Chart */}
+        <div className="card lg:col-span-2 space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-sm font-bold text-gray-900">7-Day Inventory Movement Trends</h2>
+              <p className="text-xs text-gray-400">Inward bulk receipts vs outward retail dispatches</p>
+            </div>
+            <span className="text-xs font-semibold text-brand-700 bg-brand-50 px-2 py-1 rounded-md">
+              Daily Units
+            </span>
+          </div>
+
+          <div className="h-64">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                <defs>
+                  <linearGradient id="incGrad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#3f7d07" stopOpacity={0.4} />
+                    <stop offset="95%" stopColor="#3f7d07" stopOpacity={0.0} />
+                  </linearGradient>
+                  <linearGradient id="outGrad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#ea580c" stopOpacity={0.4} />
+                    <stop offset="95%" stopColor="#ea580c" stopOpacity={0.0} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                <XAxis dataKey="date" tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
+                <YAxis tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
+                <Tooltip contentStyle={{ borderRadius: '12px', border: '1px solid #e2e8f0', fontSize: '12px' }} />
+                <Legend wrapperStyle={{ fontSize: '12px' }} />
+                <Area type="monotone" dataKey="incoming" stroke="#3f7d07" strokeWidth={2} fillOpacity={1} fill="url(#incGrad)" name="Inward (Suppliers)" />
+                <Area type="monotone" dataKey="outgoing" stroke="#ea580c" strokeWidth={2} fillOpacity={1} fill="url(#outGrad)" name="Outward (Stores)" />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
         </div>
 
-        {/* Donut — Category */}
-        <div className="card">
-          <h2 className="text-base font-bold text-gray-900 mb-5">Stock by Category</h2>
-          <ResponsiveContainer width="100%" height={180}>
-            <PieChart>
-              <Pie data={categoryData} cx="50%" cy="50%" innerRadius={50} outerRadius={80} paddingAngle={3} dataKey="value">
-                {categoryData.map((entry, index) => (
-                  <Cell key={`cell-${index}`} fill={entry.color} />
-                ))}
-              </Pie>
-              <Tooltip formatter={(v) => v.toLocaleString('en-IN')} contentStyle={{ borderRadius: '10px', border: 'none', fontSize: '12px' }} />
-            </PieChart>
-          </ResponsiveContainer>
-          <div className="flex flex-wrap gap-2 mt-2">
-            {categoryData.slice(0, 4).map((c) => (
-              <div key={c.name} className="flex items-center gap-1.5 text-xs text-gray-600">
-                <div className="w-2.5 h-2.5 rounded-full" style={{ background: c.color }} />
-                <span className="truncate max-w-[80px]">{c.name}</span>
+        {/* Right: Outgoing Breakdown by Store (Feature 5) */}
+        <div className="card space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-sm font-bold text-gray-900">Dispatches by Destination Store</h2>
+              <p className="text-xs text-gray-400">Outward volume across retail locations</p>
+            </div>
+            <Link href="/stores" className="text-xs text-brand-700 font-semibold hover:underline">
+              All Stores
+            </Link>
+          </div>
+
+          <div className="space-y-3">
+            {(kpis.outgoingByStore || []).map((s) => (
+              <div key={s.storeId} className="p-3 rounded-xl bg-gray-50 border border-gray-100 flex items-center justify-between">
+                <div className="min-w-0">
+                  <div className="font-semibold text-xs text-gray-900 truncate">{s.storeName}</div>
+                  <div className="text-[10px] text-gray-400">{s.city} · Code: {s.code}</div>
+                </div>
+                <div className="text-right shrink-0">
+                  <span className="font-bold text-xs text-orange-600">{s.totalDispatched} units</span>
+                  <div className="text-[10px] text-gray-400">shipped</div>
+                </div>
               </div>
             ))}
           </div>
         </div>
       </div>
 
-      {/* Warehouse Bar Chart + Pending Approvals */}
+      {/* Warehouses & Store Stock Distribution Overview (Feature 9 & 10) */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Bar chart — Warehouse stock */}
-        <div className="card">
-          <h2 className="text-base font-bold text-gray-900 mb-5">Warehouse Stock Distribution</h2>
-          <ResponsiveContainer width="100%" height={200}>
-            <BarChart data={warehouseData} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-              <XAxis dataKey="name" tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
-              <YAxis tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
-              <Tooltip contentStyle={{ borderRadius: '10px', border: 'none', fontSize: '12px' }} />
-              <Bar dataKey="stock" fill="#3f7d07" radius={[6, 6, 0, 0]} name="Stock" />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-
-        {/* Pending Approvals */}
-        <div className="card">
-          <h2 className="text-base font-bold text-gray-900 mb-4">Pending Approvals</h2>
-          {adjustments.length === 0 ? (
-            <div className="empty-state py-8">
-              <div className="empty-icon text-2xl">✅</div>
-              <p className="text-gray-500 text-sm">All caught up!</p>
+        {/* Warehouse Overview */}
+        <div className="card space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-sm font-bold text-gray-900 flex items-center gap-1.5">
+                <Warehouse className="w-4 h-4 text-brand-700" />
+                <span>Central Warehouses Overview</span>
+              </h2>
+              <p className="text-xs text-gray-400">Bulk reserve units held in primary logistics hubs</p>
             </div>
-          ) : (
-            <div className="space-y-3">
-              {adjustments.map((adj) => (
-                <div key={adj._id} className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl">
-                  <div className="flex-1 min-w-0">
-                    <div className="text-sm font-semibold text-gray-900 truncate">
-                      {adj.product?.name || 'Unknown Product'}
-                    </div>
-                    <div className="text-xs text-gray-500">
-                      {adj.quantityDelta > 0 ? '+' : ''}{adj.quantityDelta} units · {adj.reason}
-                    </div>
-                    <div className="text-xs text-gray-400">{adj.requestedBy?.name}</div>
-                  </div>
-                  <div className="flex gap-1.5">
-                    <button
-                      onClick={() => handleApprove(adj._id)}
-                      className="btn-success btn-sm flex items-center gap-1"
-                    >
-                      <CheckCircle className="w-3 h-3" /> Approve
-                    </button>
-                    <button
-                      onClick={() => handleReject(adj._id)}
-                      className="btn-danger btn-sm flex items-center gap-1"
-                    >
-                      <XCircle className="w-3 h-3" /> Reject
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Active Dispatch Goals & Timeline Widget */}
-      <div className="card">
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-2">
-            <h2 className="text-base font-bold text-gray-900 flex items-center gap-2">
-              <Target className="w-5 h-5 text-brand-700" />
-              Active Dispatch Goals & Deadlines
-            </h2>
-            {goalStats?.urgentAlerts > 0 && (
-              <span className="bg-red-100 text-red-700 text-xs font-bold px-2 py-0.5 rounded-full flex items-center gap-1 animate-pulse">
-                <Flame className="w-3 h-3 text-red-600" />
-                {goalStats.urgentAlerts} Urgent
-              </span>
-            )}
-          </div>
-
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setIsAssignModalOpen(true)}
-              className="btn-primary btn-sm flex items-center gap-1.5"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              <span>Assign Goal</span>
-            </button>
-            <Link
-              href="/goals"
-              className="text-xs text-brand-700 font-semibold hover:underline flex items-center gap-1 ml-2"
-            >
-              <span>View All Timeline</span>
-              <ChevronRight className="w-3.5 h-3.5" />
+            <Link href="/warehouses" className="text-xs text-brand-700 font-semibold hover:underline">
+              Manage Floors →
             </Link>
           </div>
+
+          <div className="space-y-3">
+            {warehouseData.map((w) => (
+              <div key={w._id} className="p-3 rounded-xl bg-gray-50 border border-gray-100 space-y-1.5">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="font-bold text-gray-800">{w.name}</span>
+                  <span className="font-bold text-brand-700">{w.total?.toLocaleString('en-IN')} units</span>
+                </div>
+                <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-brand-700 rounded-full"
+                    style={{ width: `${Math.min(100, Math.round((w.total / 15000) * 100))}%` }}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
 
-        {goals.length === 0 ? (
-          <div className="empty-state py-6">
-            <div className="empty-icon text-2xl">🎯</div>
-            <p className="text-gray-500 text-sm">No active dispatch goals</p>
+        {/* Store-wise Stock Overview */}
+        <div className="card space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-sm font-bold text-gray-900 flex items-center gap-1.5">
+                <Store className="w-4 h-4 text-brand-700" />
+                <span>Store-wise Live Stock Overview</span>
+              </h2>
+              <p className="text-xs text-gray-400">Packaging, bag & gift levels across retail boutiques</p>
+            </div>
+            <Link href="/stores" className="text-xs text-brand-700 font-semibold hover:underline">
+              View Stores →
+            </Link>
           </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {goals.map((g) => {
-              const isOverdue = g.isOverdue;
-              const isDueSoon = g.isDueSoon;
-              const isCompletedOrDispatched = ['dispatched', 'delivered', 'cancelled'].includes(g.status);
 
-              return (
-                <div
-                  key={g._id}
-                  className={`p-3.5 rounded-xl border transition-all ${
-                    isOverdue
-                      ? 'bg-red-50/70 border-red-200'
-                      : isDueSoon || g.priority === 'urgent'
-                      ? 'bg-amber-50/60 border-amber-200'
-                      : 'bg-gray-50 border-gray-100'
-                  }`}
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <div className="font-bold text-sm text-gray-900 truncate">{g.title}</div>
-                      <div className="text-xs text-gray-500 mt-0.5">
-                        Client: <strong>{g.customer?.name}</strong> · Qty:{' '}
-                        <strong>
-                          {g.quantity} {g.product?.unit || 'pcs'}
-                        </strong>
-                      </div>
-                    </div>
-                    <StatusBadge status={g.status} className="text-[10px]" />
-                  </div>
-
-                  <div className="flex items-center justify-between text-xs mt-3 pt-2 border-t border-gray-200/50">
-                    <div className="flex items-center gap-1 text-gray-500">
-                      <Clock className="w-3.5 h-3.5" />
-                      {!isCompletedOrDispatched ? (
-                        isOverdue ? (
-                          <span className="text-red-600 font-bold">Overdue!</span>
-                        ) : isDueSoon ? (
-                          <span className="text-amber-700 font-bold">Due in {g.remainingHours}h</span>
-                        ) : (
-                          <span>Target: {formatDateTime(g.deadline)}</span>
-                        )
-                      ) : (
-                        <span className="text-emerald-700 font-medium capitalize">{g.status?.replace(/_/g, ' ')}</span>
-                      )}
-                    </div>
-
-                    <Link
-                      href="/goals"
-                      className="text-brand-700 font-semibold text-xs hover:underline flex items-center gap-0.5"
-                    >
-                      <span>Track</span>
-                      <ChevronRight className="w-3 h-3" />
-                    </Link>
-                  </div>
+          <div className="space-y-3">
+            {storeData.map((s) => (
+              <div key={s._id} className="p-3 rounded-xl bg-gray-50 border border-gray-100 space-y-1.5">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="font-bold text-gray-800">{s.name}</span>
+                  <span className="font-bold text-teal-700">{s.total?.toLocaleString('en-IN')} units on floor</span>
                 </div>
-              );
-            })}
+                <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-teal-600 rounded-full"
+                    style={{ width: `${Math.min(100, Math.round((s.total / 2500) * 100))}%` }}
+                  />
+                </div>
+              </div>
+            ))}
           </div>
-        )}
+        </div>
       </div>
 
-      <AssignGoalModal
-        isOpen={isAssignModalOpen}
-        onClose={() => setIsAssignModalOpen(false)}
-        onSuccess={() => fetchData(true)}
-      />
+      {/* Unified Pending Approvals Center (Feature 8) */}
+      <div className="card space-y-4">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+          <div>
+            <h2 className="text-sm font-bold text-gray-900 flex items-center gap-2">
+              <Shield className="w-4 h-4 text-purple-600" />
+              <span>Pending Operational Approvals Queue</span>
+              <span className="badge bg-purple-100 text-purple-800 text-xs">
+                {(adjustments?.length || 0) + (damageClaims?.length || 0) + (storeRequests?.length || 0)} Pending
+              </span>
+            </h2>
+            <p className="text-xs text-gray-400">
+              Cross-functional queue: Stock adjustments, damage claims & store replenishment requests
+            </p>
+          </div>
 
-      {/* Recent movements table */}
-      <div className="card">
-        <h2 className="text-base font-bold text-gray-900 mb-4">Recent Stock Movements</h2>
+          <div className="flex items-center gap-1.5 bg-gray-100 p-1 rounded-xl text-xs">
+            {[
+              { id: 'all', label: 'All' },
+              { id: 'requests', label: `Store Reqs (${storeRequests?.length || 0})` },
+              { id: 'damages', label: `Damage Claims (${damageClaims?.length || 0})` },
+              { id: 'adjustments', label: `Adjustments (${adjustments?.length || 0})` },
+            ].map((t) => (
+              <button
+                key={t.id}
+                onClick={() => setPendingApprovalsTab(t.id)}
+                className={`px-2.5 py-1 rounded-lg font-medium transition-all ${
+                  pendingApprovalsTab === t.id ? 'bg-white shadow-sm text-brand-800 font-bold' : 'text-gray-500 hover:text-gray-900'
+                }`}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Approvals Table */}
         <div className="table-wrapper">
-          <table className="table">
+          <table className="table text-xs">
             <thead>
               <tr>
-                <th>Product</th>
                 <th>Type</th>
-                <th>Qty</th>
-                <th>From / To</th>
-                <th>By</th>
-                <th>Date & Time</th>
+                <th>Reference / Target</th>
+                <th>Item / Reason</th>
+                <th>Requested Qty</th>
+                <th>Submitted By</th>
+                <th>Actions</th>
               </tr>
             </thead>
             <tbody>
-              {movements.length === 0 ? (
-                <tr><td colSpan={6} className="text-center py-8 text-gray-400">No movements yet</td></tr>
-              ) : movements.map((m) => (
-                <tr key={m._id}>
-                  <td className="font-medium text-gray-900">
-                    {m.product?.name || '—'}
-                    <div className="text-xs text-gray-400">{m.product?.sku}</div>
+              {/* Store Requests */}
+              {(pendingApprovalsTab === 'all' || pendingApprovalsTab === 'requests') &&
+                Array.isArray(storeRequests) &&
+                storeRequests.map((req) => (
+                  <tr key={req._id}>
+                    <td>
+                      <span className="badge bg-blue-50 text-blue-700 border border-blue-200">
+                        Store Request
+                      </span>
+                    </td>
+                    <td>
+                      <div className="font-semibold text-gray-900">{req.store?.name}</div>
+                      <div className="text-[10px] text-gray-400">{req.requestNumber}</div>
+                    </td>
+                    <td>
+                      <div className="text-gray-700">{req.items?.length || 0} SKU items requested</div>
+                      <div className="text-[10px] text-gray-400 truncate max-w-xs">{req.notes || 'Routine restock'}</div>
+                    </td>
+                    <td className="font-bold text-gray-900">
+                      {req.items?.reduce((s, i) => s + (i.requestedQty || 0), 0)} units
+                    </td>
+                    <td>
+                      <div className="text-gray-700">{req.requestedBy?.name || 'Store Mgr'}</div>
+                      <div className="text-[10px] text-gray-400">{formatDateTime(req.createdAt)}</div>
+                    </td>
+                    <td>
+                      <button
+                        onClick={() => handleApproveRequest(req._id)}
+                        className="btn-primary btn-sm py-1 px-2.5 text-xs flex items-center gap-1"
+                      >
+                        <Check className="w-3 h-3" /> Approve & Fulfill
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+
+              {/* Damage Claims */}
+              {(pendingApprovalsTab === 'all' || pendingApprovalsTab === 'damages') &&
+                Array.isArray(damageClaims) &&
+                damageClaims.map((dmg) => (
+                  <tr key={dmg._id}>
+                    <td>
+                      <span className="badge bg-red-50 text-red-700 border border-red-200">
+                        Damage Claim ({dmg.source})
+                      </span>
+                    </td>
+                    <td>
+                      <div className="font-semibold text-gray-900">{dmg.claimNumber}</div>
+                      <div className="text-[10px] text-gray-400">{dmg.supplier?.name || dmg.store?.name || 'Central WH'}</div>
+                    </td>
+                    <td>
+                      <div className="font-medium text-gray-900">{dmg.product?.name}</div>
+                      <div className="text-[10px] text-red-600">{dmg.defectType || dmg.reason}</div>
+                    </td>
+                    <td className="font-bold text-red-600">
+                      -{dmg.quantity} {dmg.product?.unit}
+                    </td>
+                    <td>
+                      <div className="text-gray-700">{dmg.reportedBy?.name}</div>
+                      <div className="text-[10px] text-gray-400">{formatDateTime(dmg.createdAt)}</div>
+                    </td>
+                    <td>
+                      <button
+                        onClick={() => handleApproveDamage(dmg._id)}
+                        className="btn-danger btn-sm py-1 px-2.5 text-xs flex items-center gap-1"
+                      >
+                        <Check className="w-3 h-3" /> Approve Write-off / Claim
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+
+              {/* Adjustments */}
+              {(pendingApprovalsTab === 'all' || pendingApprovalsTab === 'adjustments') &&
+                Array.isArray(adjustments) &&
+                adjustments.map((adj) => (
+                  <tr key={adj._id}>
+                    <td>
+                      <span className="badge bg-amber-50 text-amber-700 border border-amber-200">
+                        Stock Adjustment
+                      </span>
+                    </td>
+                    <td>
+                      <div className="font-semibold text-gray-900">{adj.warehouse?.name}</div>
+                      <div className="text-[10px] text-gray-400">Inventory recount</div>
+                    </td>
+                    <td>
+                      <div className="font-medium text-gray-900">{adj.product?.name}</div>
+                      <div className="text-[10px] text-gray-500">{adj.reason}</div>
+                    </td>
+                    <td className={`font-bold ${adj.quantityDelta < 0 ? 'text-red-600' : 'text-emerald-600'}`}>
+                      {adj.quantityDelta > 0 ? `+${adj.quantityDelta}` : adj.quantityDelta} {adj.product?.unit}
+                    </td>
+                    <td>
+                      <div className="text-gray-700">{adj.requestedBy?.name}</div>
+                      <div className="text-[10px] text-gray-400">{formatDateTime(adj.createdAt)}</div>
+                    </td>
+                    <td>
+                      <button
+                        onClick={() => handleApproveAdjustment(adj._id)}
+                        className="btn-success btn-sm py-1 px-2.5 text-xs flex items-center gap-1"
+                      >
+                        <Check className="w-3 h-3" /> Approve Correction
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+
+              {(adjustments?.length || 0) === 0 && (damageClaims?.length || 0) === 0 && (storeRequests?.length || 0) === 0 && (
+                <tr>
+                  <td colSpan={6} className="text-center py-8 text-gray-400">
+                    <CheckCircle className="w-6 h-6 text-emerald-500 mx-auto mb-1" />
+                    All operational queues are clear! No pending approvals.
                   </td>
-                  <td>
-                    <StatusBadge status={m.type} />
-                  </td>
-                  <td className="font-semibold">{m.quantity?.toLocaleString('en-IN')}</td>
-                  <td className="text-xs">
-                    {m.fromWarehouse && <div className="text-gray-500">From: {m.fromWarehouse.name}</div>}
-                    {m.toWarehouse && <div className="text-gray-700">To: {m.toWarehouse.name}</div>}
-                    {m.supplier && <div className="text-gray-500">Supplier: {m.supplier.name}</div>}
-                    {m.customer && <div className="text-gray-500">Customer: {m.customer.name}</div>}
-                  </td>
-                  <td className="text-gray-500">{m.performedBy?.name || '—'}</td>
-                  <td className="text-gray-400 text-xs">{formatDateTime(m.createdAt)}</td>
                 </tr>
-              ))}
+              )}
             </tbody>
           </table>
         </div>

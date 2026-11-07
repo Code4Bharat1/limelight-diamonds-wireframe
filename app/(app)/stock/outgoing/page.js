@@ -1,26 +1,30 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
 import { Plus, AlertTriangle } from 'lucide-react';
-import { stockApi, productsApi, warehousesApi, customersApi } from '../../../../lib/api';
+import { stockApi, productsApi, warehousesApi, customersApi, storesApi } from '../../../../lib/api';
 import { toast } from '../../../../components/ui/Toast';
 import Modal from '../../../../components/ui/Modal';
 import { formatDateTime, formatCurrency, cn } from '../../../../lib/utils';
 
 function OutgoingForm({ onSave, onClose }) {
-  const [form, setForm] = useState({ productId: '', warehouseId: '', customerId: '', quantity: 1, referenceNo: '', unitPrice: '', notes: '' });
+  const [form, setForm] = useState({ productId: '', warehouseId: '', storeId: '', customerId: '', quantity: 1, referenceNo: '', unitPrice: '', notes: '' });
   const [products, setProducts] = useState([]);
   const [warehouses, setWarehouses] = useState([]);
   const [customers, setCustomers] = useState([]);
+  const [stores, setStores] = useState([]);
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    Promise.all([productsApi.getAll({ limit: 100 }), warehousesApi.getAll(), customersApi.getAll()])
-      .then(([p, w, c]) => {
+    Promise.all([productsApi.getAll({ limit: 100 }), warehousesApi.getAll(), customersApi.getAll(), storesApi.getAll()])
+      .then(([p, w, c, st]) => {
         setProducts(p.data.data || []);
         setWarehouses(w.data.data || []);
         setCustomers(c.data.data || []);
+        const sList = st.data.data || [];
+        setStores(sList);
         if (w.data.data?.length) setForm(f => ({...f, warehouseId: w.data.data[0]._id}));
+        if (sList.length) setForm(f => ({...f, storeId: sList[0]._id}));
       });
   }, []);
 
@@ -73,8 +77,15 @@ function OutgoingForm({ onSave, onClose }) {
           <input type="number" min="1" className={cn('input', isExceeding && 'border-red-400 ring-1 ring-red-400')} value={form.quantity} onChange={(e) => setForm({...form, quantity: Number(e.target.value)})} required />
         </div>
         <div className="form-group">
-          <label className="label">Customer</label>
-          <select className="input select" value={form.customerId} onChange={(e) => setForm({...form, customerId: e.target.value})}>
+          <label className="label">Destination Showroom Store</label>
+          <select className="input select" value={form.storeId} onChange={(e) => setForm({...form, storeId: e.target.value, customerId: ''})}>
+            <option value="">— None (Corporate / Direct) —</option>
+            {stores.map((s) => <option key={s._id} value={s._id}>{s.name} ({s.code})</option>)}
+          </select>
+        </div>
+        <div className="form-group">
+          <label className="label">Corporate Client (Optional)</label>
+          <select className="input select" value={form.customerId} onChange={(e) => setForm({...form, customerId: e.target.value, storeId: ''})}>
             <option value="">— None —</option>
             {customers.map((c) => <option key={c._id} value={c._id}>{c.name}</option>)}
           </select>
@@ -130,7 +141,7 @@ export default function OutgoingPage() {
       <div className="table-wrapper card p-0">
         <table className="table">
           <thead>
-            <tr><th>Product</th><th>Qty</th><th>Warehouse</th><th>Customer</th><th>Value</th><th>By</th><th>Date</th></tr>
+            <tr><th>Product</th><th>Qty</th><th>Warehouse</th><th>Destination</th><th>Value</th><th>By</th><th>Date</th></tr>
           </thead>
           <tbody>
             {loading ? Array.from({length:5}).map((_,i)=><tr key={i}>{Array.from({length:7}).map((_,j)=><td key={j}><div className="h-4 bg-gray-100 rounded animate-pulse"/></td>)}</tr>)
@@ -140,7 +151,7 @@ export default function OutgoingPage() {
                 <td><div className="font-semibold text-sm">{r.product?.name}</div><div className="text-xs text-gray-400">{r.product?.sku}</div></td>
                 <td className="font-bold text-red-600">-{r.quantity} <span className="text-gray-400 font-normal text-xs">{r.product?.unit}</span></td>
                 <td className="text-gray-600">{r.fromWarehouse?.name || '—'}</td>
-                <td className="text-gray-600">{r.customer?.name || '—'}</td>
+                <td className="text-gray-600">{r.store?.name || r.customer?.name || '—'}</td>
                 <td>{r.totalValue ? formatCurrency(r.totalValue) : '—'}</td>
                 <td className="text-gray-500 text-sm">{r.performedBy?.name}</td>
                 <td className="text-gray-400 text-xs">{formatDateTime(r.createdAt)}</td>

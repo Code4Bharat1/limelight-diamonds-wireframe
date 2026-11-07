@@ -2,25 +2,25 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
-  LayoutDashboard, Package, UserCircle, BarChart2, MoreHorizontal,
-  Home, QrCode, Activity, User, Target
+  LayoutDashboard, Package, Store, BarChart2, MoreHorizontal,
+  Home, QrCode, Target, User
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import useAuthStore from '../../lib/authStore';
 
 const adminBottomNav = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { href: '/goals', label: 'Goals', icon: Target },
+  { href: '/goals', label: 'Dispatches', icon: Target },
   { href: '/products', label: 'Inventory', icon: Package },
-  { href: '/attendance', label: 'Attendance', icon: UserCircle },
+  { href: '/stores', label: 'Stores', icon: Store },
   { href: '/notifications', label: 'More', icon: MoreHorizontal },
 ];
 
 const workerBottomNav = [
   { href: '/worker', label: 'Home', icon: Home },
-  { href: '/goals', label: 'Goals', icon: Target },
-  { href: '/worker/scan', label: 'Scan', icon: QrCode },
-  { href: '/attendance', label: 'Attendance', icon: UserCircle },
+  { href: '/goals', label: 'Tasks', icon: Target },
+  { href: '/worker/scan', label: 'QR Scan', icon: QrCode },
+  { href: '/products', label: 'Inventory', icon: Package },
   { href: '/profile', label: 'Profile', icon: User },
 ];
 
@@ -28,7 +28,8 @@ export default function BottomNav() {
   const pathname = usePathname();
   const { user } = useAuthStore();
 
-  const items = user?.role === 'worker' ? workerBottomNav : adminBottomNav;
+  const isStaff = ['warehouse_staff', 'worker'].includes(user?.role);
+  const items = isStaff ? workerBottomNav : adminBottomNav;
 
   return (
     <nav className="bottom-nav safe-area-pb">

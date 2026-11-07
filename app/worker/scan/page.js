@@ -119,7 +119,7 @@ function QuickScanPageInner() {
 
   const handleScanSuccess = async (text) => {
     stopScanner();
-    const cleanSku = text.replace('LIMELIGHT-', '').trim();
+    const cleanSku = text.replace('LIMELIGHT-', '').replace('LLD-SKU-', '').trim();
     lookupProduct(cleanSku);
   };
 
