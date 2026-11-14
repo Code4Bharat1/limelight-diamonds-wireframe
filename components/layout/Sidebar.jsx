@@ -6,7 +6,7 @@ import {
   ArrowLeftRight, Warehouse, Settings2, AlertTriangle, RotateCcw,
   ClipboardList, Users, Truck, UserCheck, BarChart2,
   Bell, ShieldCheck, LogOut, ChevronRight, Store, ShoppingBag,
-  CreditCard, History, Send, Target
+  CreditCard, History, Send, Target, Sparkles, TrendingUp
 } from 'lucide-react';
 import useAuthStore from '../../lib/authStore';
 import { cn } from '../../lib/utils';
@@ -40,6 +40,7 @@ const allNavItems = [
   // Relationships & Admin
   { href: '/suppliers', label: 'Suppliers & Vendors', icon: Truck, section: 'parties' },
   { href: '/customers', label: 'Customers & Lounges', icon: UserCheck, section: 'parties' },
+  { href: '/ai-predictions', label: 'Sales Forecast & Refill', icon: TrendingUp, section: 'admin' },
   { href: '/reports', label: 'Reports & Analytics', icon: BarChart2, section: 'admin' },
   { href: '/activity-logs', label: 'Activity Audit Trail', icon: History, section: 'admin' },
   { href: '/users', label: 'Users & Roles', icon: ShieldCheck, section: 'admin' },

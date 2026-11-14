@@ -223,19 +223,34 @@ function DamagedForm({ onSave, onClose }) {
   );
 }
 
+const COMMON_REJECTION_REASONS = [
+  'Normal wear & tear — not a manufacturing defect',
+  'Damage attributed to mishandling at retail showroom',
+  'Insufficient photo/evidence provided for claim',
+  'Claim filed past allowable vendor return window',
+  'Repaired internally & restored to active inventory',
+  'Discrepancy in SKU or received count',
+];
+
 export default function DamagedPage() {
   const { user } = useAuthStore();
   const [claims, setClaims] = useState([]);
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState('all'); // 'all', 'pending', 'approved', 'vendor_claims', 'transit'
+  const [activeTab, setActiveTab] = useState('all'); // 'all', 'pending', 'approved', 'rejected', 'vendor', 'transit', 'store', 'warehouse'
+  const [rejectModalOpen, setRejectModalOpen] = useState(false);
+  const [claimToReject, setClaimToReject] = useState(null);
+  const [rejectNote, setRejectNote] = useState('');
+  const [rejectNoteError, setRejectNoteError] = useState('');
+  const [rejecting, setRejecting] = useState(false);
+  const [selectedClaim, setSelectedClaim] = useState(null);
 
   const fetchClaims = useCallback(async () => {
     setLoading(true);
     try {
       const res = await damageApi.getAll({
         source: ['vendor', 'transit', 'store', 'warehouse'].includes(activeTab) ? activeTab : undefined,
-        status: activeTab === 'pending' ? 'pending_approval' : activeTab === 'approved' ? 'approved' : undefined,
+        status: activeTab === 'pending' ? 'pending_approval' : activeTab === 'approved' ? 'approved' : activeTab === 'rejected' ? 'rejected' : undefined,
       });
       setClaims(res.data.data || []);
     } catch {}
@@ -256,13 +271,31 @@ export default function DamagedPage() {
     }
   };
 
-  const handleRejectClaim = async (id) => {
+  const handleOpenReject = (claim) => {
+    setClaimToReject(claim);
+    setRejectNote('');
+    setRejectNoteError('');
+    setRejectModalOpen(true);
+  };
+
+  const handleConfirmReject = async (e) => {
+    if (e) e.preventDefault();
+    if (!rejectNote.trim()) {
+      setRejectNoteError('Please enter a note message explaining the reason for rejection.');
+      return;
+    }
+    setRejecting(true);
     try {
-      await damageApi.reject(id, { comment: 'Rejected after re-inspection' });
-      toast('Claim rejected', 'info');
+      await damageApi.reject(claimToReject._id, { comment: rejectNote.trim() });
+      toast('Damage claim rejected and note recorded', 'info');
+      setRejectModalOpen(false);
+      setClaimToReject(null);
+      setRejectNote('');
       fetchClaims();
     } catch {
-      toast('Failed to reject', 'error');
+      toast('Failed to reject claim', 'error');
+    } finally {
+      setRejecting(false);
     }
   };
 
@@ -290,6 +323,7 @@ export default function DamagedPage() {
           { id: 'all', label: 'All Records' },
           { id: 'pending', label: 'Pending Approval' },
           { id: 'approved', label: 'Approved & Settled' },
+          { id: 'rejected', label: 'Rejected' },
           { id: 'vendor', label: 'Vendor Claims' },
           { id: 'transit', label: 'Transit Damages' },
           { id: 'store', label: 'Store Damages' },
@@ -368,6 +402,17 @@ export default function DamagedPage() {
                   <td>
                     <div className="font-semibold text-gray-800">{c.defectType}</div>
                     <div className="text-[10px] text-gray-400 max-w-xs truncate">{c.reason}</div>
+                    {c.status === 'rejected' && (c.rejectionReason || c.notes) && (
+                      <div className="mt-1.5 p-1.5 bg-red-50/90 rounded-lg border border-red-200 text-[10px] text-red-800 max-w-xs">
+                        <div className="flex items-center gap-1 font-bold text-red-900">
+                          <FileText className="w-3 h-3 text-red-500 shrink-0" />
+                          <span>Rejection Note:</span>
+                        </div>
+                        <div className="mt-0.5 text-red-700 italic">
+                          {c.rejectionReason || (c.notes.includes('Rejected:') ? c.notes.split('Rejected:').pop().trim() : c.notes)}
+                        </div>
+                      </div>
+                    )}
                   </td>
                   <td>
                     <StatusBadge status={c.status} />
@@ -388,17 +433,47 @@ export default function DamagedPage() {
                           <Check className="w-3 h-3" /> Approve
                         </button>
                         <button
-                          onClick={() => handleRejectClaim(c._id)}
+                          onClick={() => handleOpenReject(c)}
                           className="btn-danger btn-sm py-1 px-2 text-xs flex items-center gap-1"
-                          title="Reject"
+                          title="Reject Damaged Stock (Requires Note)"
                         >
                           <X className="w-3 h-3" /> Reject
                         </button>
                       </div>
+                    ) : c.status === 'approved' ? (
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] text-emerald-700 font-semibold flex items-center gap-1">
+                          <CheckCircle className="w-3.5 h-3.5" /> Approved
+                        </span>
+                        <button
+                          onClick={() => setSelectedClaim(c)}
+                          className="text-gray-400 hover:text-gray-700 p-1 rounded hover:bg-gray-100"
+                          title="View Details"
+                        >
+                          <Eye className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    ) : c.status === 'rejected' ? (
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] text-red-600 font-semibold flex items-center gap-1">
+                          <X className="w-3.5 h-3.5" /> Rejected
+                        </span>
+                        <button
+                          onClick={() => setSelectedClaim(c)}
+                          className="text-gray-400 hover:text-red-700 p-1 rounded hover:bg-red-50"
+                          title="View Rejection Details & Note"
+                        >
+                          <Eye className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
                     ) : (
-                      <span className="text-[10px] text-emerald-700 font-semibold flex items-center gap-1">
-                        <CheckCircle className="w-3.5 h-3.5" /> Approved
-                      </span>
+                      <button
+                        onClick={() => setSelectedClaim(c)}
+                        className="text-gray-400 hover:text-gray-700 p-1 rounded hover:bg-gray-100"
+                        title="View Details"
+                      >
+                        <Eye className="w-3.5 h-3.5" />
+                      </button>
                     )}
                   </td>
                 </tr>
@@ -408,7 +483,7 @@ export default function DamagedPage() {
         </table>
       </div>
 
-      {/* Modal */}
+      {/* Report Damaged Stock Modal */}
       <Modal
         isOpen={modalOpen}
         onClose={() => setModalOpen(false)}
@@ -422,6 +497,214 @@ export default function DamagedPage() {
           }}
           onClose={() => setModalOpen(false)}
         />
+      </Modal>
+
+      {/* Rejection Note Message Modal */}
+      <Modal
+        isOpen={rejectModalOpen}
+        onClose={() => {
+          if (!rejecting) {
+            setRejectModalOpen(false);
+            setClaimToReject(null);
+            setRejectNote('');
+            setRejectNoteError('');
+          }
+        }}
+        title="Reject Damaged Stock Claim"
+        size="md"
+      >
+        {claimToReject && (
+          <form onSubmit={handleConfirmReject} className="p-6 space-y-4 text-xs">
+            {/* Warning / Summary Banner */}
+            <div className="p-3 bg-red-50/80 border border-red-200 rounded-xl flex items-start gap-3">
+              <div className="w-8 h-8 rounded-lg bg-red-100 flex items-center justify-center shrink-0 mt-0.5">
+                <AlertTriangle className="w-4 h-4 text-red-600" />
+              </div>
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <span className="font-mono font-bold text-red-950 text-xs">{claimToReject.claimNumber}</span>
+                  <span className="badge bg-red-100 text-red-800 capitalize text-[10px]">{claimToReject.source}</span>
+                </div>
+                <div className="font-semibold text-gray-800">
+                  {claimToReject.product?.name} <span className="font-mono text-gray-500 font-normal">({claimToReject.product?.sku})</span>
+                </div>
+                <div className="text-[11px] text-gray-600">
+                  Quantity: <span className="font-bold text-red-600">{claimToReject.quantity} {claimToReject.product?.unit || 'pcs'}</span>
+                  {claimToReject.defectType && <span> • Defect: <span className="font-medium text-gray-800">{claimToReject.defectType}</span></span>}
+                </div>
+              </div>
+            </div>
+
+            {/* Note Input */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="label text-xs font-bold text-gray-800">
+                  Rejection Note Message <span className="text-red-500">*</span>
+                </label>
+                <span className="text-[10px] text-gray-400">Required</span>
+              </div>
+
+              {/* Quick Select Preset Reasons */}
+              <div>
+                <p className="text-[10px] text-gray-500 mb-1.5 font-medium">Quick Select Reason:</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {COMMON_REJECTION_REASONS.map((reason) => (
+                    <button
+                      key={reason}
+                      type="button"
+                      onClick={() => {
+                        setRejectNote(reason);
+                        setRejectNoteError('');
+                      }}
+                      className="px-2 py-1 rounded-lg border border-gray-200 bg-gray-50 text-[10px] text-gray-700 hover:bg-red-50 hover:border-red-200 hover:text-red-700 transition-colors text-left"
+                    >
+                      {reason}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <textarea
+                className={`input min-h-[90px] resize-none text-xs w-full ${rejectNoteError ? 'border-red-500 focus:border-red-500 focus:ring-red-200' : ''}`}
+                placeholder="Enter a message/note explaining why this damage claim is rejected..."
+                value={rejectNote}
+                onChange={(e) => {
+                  setRejectNote(e.target.value);
+                  if (rejectNoteError) setRejectNoteError('');
+                }}
+                rows={3}
+                autoFocus
+              />
+
+              {rejectNoteError && (
+                <p className="text-[11px] text-red-600 font-medium flex items-center gap-1">
+                  <AlertTriangle className="w-3 h-3" /> {rejectNoteError}
+                </p>
+              )}
+            </div>
+
+            {/* Actions */}
+            <div className="flex gap-2 pt-3 border-t border-gray-100">
+              <button
+                type="button"
+                className="btn-secondary flex-1 text-xs"
+                onClick={() => {
+                  setRejectModalOpen(false);
+                  setClaimToReject(null);
+                  setRejectNote('');
+                  setRejectNoteError('');
+                }}
+                disabled={rejecting}
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                className="btn-danger flex-1 text-xs flex items-center justify-center gap-1.5"
+                disabled={rejecting || !rejectNote.trim()}
+              >
+                {rejecting ? (
+                  <>
+                    <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    <span>Rejecting...</span>
+                  </>
+                ) : (
+                  <>
+                    <X className="w-3.5 h-3.5" />
+                    <span>Reject Claim with Note</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </form>
+        )}
+      </Modal>
+
+      {/* View Claim Details Modal */}
+      <Modal
+        isOpen={!!selectedClaim}
+        onClose={() => setSelectedClaim(null)}
+        title={`Damage Claim Details — ${selectedClaim?.claimNumber}`}
+        size="md"
+      >
+        {selectedClaim && (
+          <div className="p-6 space-y-4 text-xs">
+            <div className="flex items-center justify-between pb-3 border-b border-gray-100">
+              <div>
+                <div className="font-semibold text-sm text-gray-900">{selectedClaim.product?.name}</div>
+                <div className="font-mono text-[11px] text-brand-700">{selectedClaim.product?.sku}</div>
+              </div>
+              <StatusBadge status={selectedClaim.status} />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3 text-xs bg-gray-50 p-3 rounded-xl border border-gray-100">
+              <div>
+                <span className="text-gray-400 block text-[10px]">Source / Origin</span>
+                <span className="font-semibold capitalize text-gray-800">{selectedClaim.source}</span>
+              </div>
+              <div>
+                <span className="text-gray-400 block text-[10px]">Party / Supplier / Courier</span>
+                <span className="font-semibold text-gray-800">
+                  {selectedClaim.supplier?.name || selectedClaim.store?.name || selectedClaim.courierName || 'Central Warehouse'}
+                </span>
+              </div>
+              <div>
+                <span className="text-gray-400 block text-[10px]">Quantity</span>
+                <span className="font-bold text-red-600">{selectedClaim.quantity} {selectedClaim.product?.unit || 'pcs'}</span>
+              </div>
+              <div>
+                <span className="text-gray-400 block text-[10px]">Disposition</span>
+                <span className="font-semibold capitalize text-purple-700">{selectedClaim.disposition?.replace(/_/g, ' ') || 'Pending'}</span>
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <span className="font-bold text-gray-700 block">Defect Classification</span>
+              <p className="text-gray-800 bg-white p-2.5 rounded-lg border border-gray-200">{selectedClaim.defectType}</p>
+            </div>
+
+            {selectedClaim.reason && (
+              <div className="space-y-1">
+                <span className="font-bold text-gray-700 block">Findings & Inspection Report</span>
+                <p className="text-gray-600 bg-white p-2.5 rounded-lg border border-gray-200 whitespace-pre-wrap">{selectedClaim.reason}</p>
+              </div>
+            )}
+
+            {selectedClaim.status === 'rejected' && (selectedClaim.rejectionReason || selectedClaim.notes) && (
+              <div className="p-3 bg-red-50 border border-red-200 rounded-xl space-y-1.5">
+                <div className="flex items-center gap-1.5 text-red-900 font-bold text-xs">
+                  <X className="w-3.5 h-3.5 text-red-600" />
+                  <span>Rejection Note Message</span>
+                </div>
+                <p className="text-red-800 italic bg-white/90 p-2.5 rounded border border-red-100 whitespace-pre-wrap">
+                  {selectedClaim.rejectionReason || (selectedClaim.notes.includes('Rejected:') ? selectedClaim.notes.split('Rejected:').pop().trim() : selectedClaim.notes)}
+                </p>
+                {selectedClaim.rejectedBy && (
+                  <p className="text-[10px] text-red-600">
+                    Reviewed by {selectedClaim.rejectedBy.name || 'Manager'} {selectedClaim.rejectedAt ? `on ${formatDateTime(selectedClaim.rejectedAt)}` : ''}
+                  </p>
+                )}
+              </div>
+            )}
+
+            {selectedClaim.notes && selectedClaim.status !== 'rejected' && (
+              <div className="space-y-1">
+                <span className="font-bold text-gray-700 block">Notes & Activity Log</span>
+                <p className="text-gray-600 bg-white p-2.5 rounded-lg border border-gray-200 whitespace-pre-wrap">{selectedClaim.notes}</p>
+              </div>
+            )}
+
+            <div className="pt-2 flex justify-end">
+              <button
+                type="button"
+                className="btn-secondary text-xs px-4"
+                onClick={() => setSelectedClaim(null)}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        )}
       </Modal>
     </div>
   );

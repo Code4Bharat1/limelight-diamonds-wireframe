@@ -47,6 +47,7 @@ function QuickScanPageInner() {
   const [submitting, setSubmitting] = useState(false);
   const [stockError, setStockError] = useState('');
   const [lastSuccess, setLastSuccess] = useState(null);
+  const [scannedOrder, setScannedOrder] = useState(null);
 
   const scannerRef = useRef(null);
   const html5QrCodeRef = useRef(null);
@@ -82,13 +83,13 @@ function QuickScanPageInner() {
   }, []);
 
   useEffect(() => {
-    if (!manualMode && !product && typeof window !== 'undefined') {
+    if (!manualMode && !product && !scannedOrder && typeof window !== 'undefined') {
       startScanner();
     }
     return () => {
       stopScanner();
     };
-  }, [manualMode, product]);
+  }, [manualMode, product, scannedOrder]);
 
   const startScanner = async () => {
     try {
@@ -119,6 +120,21 @@ function QuickScanPageInner() {
 
   const handleScanSuccess = async (text) => {
     stopScanner();
+    try {
+      const trimmed = text.trim();
+      if (trimmed.startsWith('{')) {
+        const parsed = JSON.parse(trimmed);
+        if (parsed.manifest === 'LLD-ORDER-MANIFEST' || parsed.manifestType === 'LLD_ORDER_CONSIGNMENT' || Array.isArray(parsed.items)) {
+          setScannedOrder(parsed);
+          setProduct(null);
+          toast(`Identified Order Box: ${parsed.orderNumber || 'Consignment'} (${parsed.items?.length || 0} products)`, 'success');
+          return;
+        } else if (parsed.sku) {
+          lookupProduct(parsed.sku);
+          return;
+        }
+      }
+    } catch {}
     const cleanSku = text.replace('LIMELIGHT-', '').replace('LLD-SKU-', '').trim();
     lookupProduct(cleanSku);
   };
@@ -166,6 +182,7 @@ function QuickScanPageInner() {
 
   const handleResetForNext = () => {
     setProduct(null);
+    setScannedOrder(null);
     setSkuSearch('');
     setQuantity(1);
     setStockError('');
@@ -325,9 +342,77 @@ function QuickScanPageInner() {
         </div>
       )}
 
-      {/* 1. Camera / Manual Product Selector */}
+      {/* 1. Camera / Manual Product Selector / Order Box */}
       <div className="card p-3 space-y-3">
-        {!product ? (
+        {scannedOrder ? (
+          /* Scanned Multi-Product Order Box Card */
+          <div className="p-4 bg-emerald-50/90 border-2 border-emerald-400 rounded-2xl space-y-3 shadow-md">
+            <div className="flex items-start justify-between">
+              <div>
+                <span className="badge bg-emerald-700 text-white font-bold text-[10px] uppercase">
+                  📦 Multi-Product Order Consignment
+                </span>
+                <h3 className="font-mono text-base font-bold text-gray-900 mt-1">
+                  {scannedOrder.orderNumber}
+                </h3>
+                <p className="text-xs text-gray-600">
+                  Recipient: <strong className="text-gray-900">{scannedOrder.recipient}</strong>
+                </p>
+                {scannedOrder.originWarehouse && (
+                  <p className="text-[11px] text-gray-500">
+                    Origin: {scannedOrder.originWarehouse}
+                  </p>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={handleResetForNext}
+                className="text-xs text-gray-400 hover:text-red-600 p-1.5 rounded-lg hover:bg-white"
+                title="Rescan / Next"
+              >
+                <RefreshCw className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-1.5 pt-2 border-t border-emerald-200">
+              <div className="flex items-center justify-between text-xs font-bold text-gray-800">
+                <span>Products Inside Box ({scannedOrder.items?.length || 0} Items):</span>
+                <span className="text-brand-800 font-bold">
+                  {scannedOrder.totalQuantity || scannedOrder.items?.reduce((s, i) => s + (i.quantity || 1), 0)} Units
+                </span>
+              </div>
+
+              <div className="bg-white rounded-xl border border-emerald-200 divide-y divide-gray-100 overflow-hidden text-xs">
+                {scannedOrder.items?.map((it, i) => (
+                  <div key={i} className="p-2.5 flex items-center justify-between">
+                    <div>
+                      <div className="font-bold text-gray-900">{it.name}</div>
+                      <div className="font-mono text-[10px] text-brand-700">
+                        {it.sku} {it.batch ? `· ${it.batch}` : ''}
+                      </div>
+                    </div>
+                    <div className="font-bold text-gray-900">
+                      {it.quantity} {it.unit || 'pcs'}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="pt-2 flex gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  toast(`Order ${scannedOrder.orderNumber} verified and processed!`, 'success');
+                  handleResetForNext();
+                }}
+                className="btn-primary w-full py-2.5 text-xs font-bold shadow-sm"
+              >
+                ✓ Verify & Acknowledge All {scannedOrder.items?.length || 0} Products
+              </button>
+            </div>
+          </div>
+        ) : !product ? (
           <div>
             {!manualMode ? (
               <div className="space-y-2">
@@ -391,7 +476,8 @@ function QuickScanPageInner() {
         )}
       </div>
 
-      <form onSubmit={handleSubmit} className="space-y-4">
+      {!scannedOrder && (
+        <form onSubmit={handleSubmit} className="space-y-4">
         {/* 2. Action Selector (Fast Pills) */}
         <div className="space-y-1.5">
           <label className="text-xs font-bold text-gray-700 uppercase tracking-wide">
@@ -630,6 +716,7 @@ function QuickScanPageInner() {
           )}
         </button>
       </form>
+      )}
     </div>
   );
 }
