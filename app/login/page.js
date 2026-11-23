@@ -121,7 +121,7 @@ export default function LoginPage() {
         <div className="grid grid-cols-2 gap-3 pt-6 border-t border-white/10">
           {[
             { label: 'Active SKUs', value: '18+' },
-            { label: 'Central Warehouses', value: '3' },
+            { label: 'Central Inventory', value: 'Live' },
             { label: 'Retail Stores Linked', value: '5' },
             { label: 'Live POS Terminals', value: '5 Online' },
           ].map((s) => (

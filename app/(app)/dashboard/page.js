@@ -132,7 +132,7 @@ export default function DashboardPage() {
             </span>
           </div>
           <p className="text-gray-500 text-xs mt-0.5">
-            Limelight Diamonds · Central Warehouses & Showroom Network
+            Limelight Diamonds · Central Inventory & Showroom Network
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -288,13 +288,13 @@ export default function DashboardPage() {
           <div className="flex items-center justify-between">
             <div>
               <h2 className="text-sm font-bold text-gray-900 flex items-center gap-1.5">
-                <Warehouse className="w-4 h-4 text-brand-700" />
-                <span>Central Warehouses Overview</span>
+                <Boxes className="w-4 h-4 text-brand-700" />
+                <span>Central Inventory Overview (BKC)</span>
               </h2>
-              <p className="text-xs text-gray-400">Bulk reserve units held in primary logistics hubs</p>
+              <p className="text-xs text-gray-400">Packaging, gift kits & display props held at Central Hub</p>
             </div>
             <Link href="/warehouses" className="text-xs text-brand-700 font-semibold hover:underline">
-              Manage Floors →
+              View Live Stock →
             </Link>
           </div>
 

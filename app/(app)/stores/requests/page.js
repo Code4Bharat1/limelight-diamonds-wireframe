@@ -108,7 +108,7 @@ function RequestForm({ stores = [], warehouses = [], products = [], onSave, onCl
         requiredByDate,
         notes,
       });
-      toast('Store stock request submitted to Central Warehouse!', 'success');
+      toast('Store stock request submitted to Central Inventory!', 'success');
       onSave();
     } catch {
       toast('Failed to submit request', 'error');
@@ -770,27 +770,41 @@ export default function StoreRequestsPage() {
                 </label>
                 <span className="text-[10px] text-gray-400">Warehouse responsible for dispatch</span>
               </div>
-              <select
-                className="input select text-xs font-medium bg-white"
-                value={selectedWarehouseId}
-                onChange={(e) => {
-                  const whId = e.target.value;
-                  setSelectedWarehouseId(whId);
-                  // If current worker is not stationed here, auto-switch to a worker at this warehouse if one exists
-                  const whWorkers = workers.filter((w) => w.assignedWarehouse?._id === whId);
-                  if (whWorkers.length > 0 && !whWorkers.some((w) => w._id === selectedWorkerId)) {
-                    setSelectedWorkerId(whWorkers[0]._id);
-                  }
-                  if (approvalError) setApprovalError('');
-                }}
-                required
-              >
-                {warehouses.map((w) => (
-                  <option key={w._id} value={w._id}>
-                    {w.name} ({w.location || w.code})
-                  </option>
-                ))}
-              </select>
+              {warehouses.length <= 1 ? (
+                <div className="p-2.5 bg-brand-50/60 rounded-xl border border-brand-200 flex items-center justify-between text-xs">
+                  <div className="flex items-center gap-2">
+                    <Warehouse className="w-4 h-4 text-brand-700 shrink-0" />
+                    <div>
+                      <div className="font-bold text-gray-900">{warehouses[0]?.name || 'Limelight Central Hub (BKC)'}</div>
+                      <div className="text-[10px] text-gray-500">{warehouses[0]?.address || 'BKC, Mumbai'} · Central Fulfillment Facility</div>
+                    </div>
+                  </div>
+                  <span className="badge bg-brand-100 text-brand-800 text-[10px] font-bold px-2 py-0.5">
+                    Central Facility
+                  </span>
+                </div>
+              ) : (
+                <select
+                  className="input select text-xs font-medium bg-white"
+                  value={selectedWarehouseId}
+                  onChange={(e) => {
+                    const whId = e.target.value;
+                    setSelectedWarehouseId(whId);
+                    const whWorkers = workers.filter((w) => w.assignedWarehouse?._id === whId);
+                    if (whWorkers.length > 0 && !whWorkers.some((w) => w._id === selectedWorkerId)) {
+                      setSelectedWorkerId(whWorkers[0]._id);
+                    }
+                    if (approvalError) setApprovalError('');
+                  }}
+                  required
+                >
+                  {warehouses.map((w) => (
+                    <option key={w._id} value={w._id}>
+                      {w.name} ({w.location || w.code})
+                    </option>
+                  ))}
+                </select>
+              )}
             </div>
 
             {/* Section 2: Worker Assignment */}

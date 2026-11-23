@@ -35,7 +35,6 @@ export default function WorkerHomePage() {
     { label: 'Dispatch Picking Tasks', icon: Target, color: 'bg-indigo-50 text-indigo-700 border-indigo-200', href: '/goals' },
     { label: 'Inward Goods Verification', icon: ArrowDownToLine, color: 'bg-teal-50 text-teal-700 border-teal-200', href: '/worker/scan?action=incoming' },
     { label: 'Stock Audits & Count', icon: Boxes, color: 'bg-purple-50 text-purple-700 border-purple-200', href: '/audits' },
-    { label: 'Inter-Unit Transfers', icon: ArrowLeftRight, color: 'bg-blue-50 text-blue-700 border-blue-200', href: '/worker/scan?action=transfer' },
     { label: 'Report Damaged Material', icon: AlertTriangle, color: 'bg-red-50 text-red-700 border-red-200', href: '/stock/damaged' },
   ];
 

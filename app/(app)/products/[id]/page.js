@@ -4,7 +4,7 @@ import { useParams, useRouter } from 'next/navigation';
 import {
   Package, ChevronLeft, QrCode, AlertTriangle, ArrowDownToLine,
   ArrowUpFromLine, ArrowLeftRight, Clock, Building2, MapPin, Tag,
-  Warehouse, Store, Truck, Printer
+  Boxes, Store, Truck, Printer
 } from 'lucide-react';
 import { productsApi } from '@/lib/api';
 import StatusBadge from '@/components/ui/StatusBadge';
@@ -183,8 +183,8 @@ export default function ProductDetailPage() {
         <div className="card space-y-3">
           <div className="flex items-center justify-between">
             <h3 className="text-xs font-bold text-gray-900 uppercase tracking-wide flex items-center gap-1.5">
-              <Warehouse className="w-4 h-4 text-brand-700" />
-              <span>Central Warehouses Stock</span>
+              <Boxes className="w-4 h-4 text-brand-700" />
+              <span>Central Inventory Stock (BKC)</span>
             </h3>
             <span className="text-xs font-bold text-brand-700">
               {product.warehouseTotalStock?.toLocaleString('en-IN') || 0} {product.unit}

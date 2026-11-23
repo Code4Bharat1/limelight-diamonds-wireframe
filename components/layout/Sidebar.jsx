@@ -3,10 +3,10 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import {
   LayoutDashboard, Package, QrCode, ArrowDownToLine, ArrowUpFromLine,
-  ArrowLeftRight, Warehouse, Settings2, AlertTriangle, RotateCcw,
-  ClipboardList, Users, Truck, UserCheck, BarChart2,
+  ArrowLeftRight, Boxes, Settings2, AlertTriangle, RotateCcw,
+  ClipboardList, Users, Truck, UserCheck,
   Bell, ShieldCheck, LogOut, ChevronRight, Store, ShoppingBag,
-  CreditCard, History, Send, Target, Sparkles, TrendingUp
+  CreditCard, History, Send, Target, Sparkles
 } from 'lucide-react';
 import useAuthStore from '../../lib/authStore';
 import { cn } from '../../lib/utils';
@@ -25,8 +25,7 @@ const allNavItems = [
   { href: '/qr-codes', label: 'QR Tags', icon: QrCode, section: 'inventory' },
   { href: '/stock/incoming', label: 'Inward Receiving', icon: ArrowDownToLine, section: 'inventory' },
   { href: '/stock/outgoing', label: 'Outward Dispatch', icon: ArrowUpFromLine, section: 'inventory' },
-  { href: '/stock/transfers', label: 'Inter-Unit Transfers', icon: ArrowLeftRight, section: 'inventory' },
-  { href: '/warehouses', label: 'Warehouses & Floors', icon: Warehouse, section: 'inventory' },
+  { href: '/warehouses', label: 'Central Inventory', icon: Boxes, section: 'inventory' },
   { href: '/stock/adjustments', label: 'Stock Adjustments', icon: Settings2, section: 'inventory' },
   { href: '/stock/damaged', label: 'Damage & Claims', icon: AlertTriangle, section: 'inventory' },
   { href: '/returns', label: 'Store Returns', icon: RotateCcw, section: 'inventory' },
@@ -40,8 +39,6 @@ const allNavItems = [
   // Relationships & Admin
   { href: '/suppliers', label: 'Suppliers & Vendors', icon: Truck, section: 'parties' },
   { href: '/customers', label: 'Customers & Lounges', icon: UserCheck, section: 'parties' },
-  { href: '/ai-predictions', label: 'Sales Forecast & Refill', icon: TrendingUp, section: 'admin' },
-  { href: '/reports', label: 'Reports & Analytics', icon: BarChart2, section: 'admin' },
   { href: '/activity-logs', label: 'Activity Audit Trail', icon: History, section: 'admin' },
   { href: '/users', label: 'Users & Roles', icon: ShieldCheck, section: 'admin' },
   { href: '/notifications', label: 'Notifications', icon: Bell, section: 'admin' },
@@ -49,7 +46,7 @@ const allNavItems = [
 
 const sectionLabels = {
   main: '',
-  inventory: 'Warehouse & Inventory',
+  inventory: 'Inventory & Stock',
   stores: 'Store Operations & POS',
   parties: 'Vendors & Partners',
   admin: 'Control & Intelligence',
@@ -85,12 +82,12 @@ export default function Sidebar({ onClose }) {
     }
     if (role === 'warehouse_manager') {
       return allNavItems.filter((i) =>
-        ['/dashboard', '/goals', '/products', '/qr-codes', '/stock/incoming', '/stock/outgoing', '/stock/transfers', '/warehouses', '/stock/adjustments', '/stock/damaged', '/returns', '/audits', '/stores/requests', '/suppliers', '/reports', '/notifications'].includes(i.href)
+        ['/dashboard', '/goals', '/products', '/qr-codes', '/stock/incoming', '/stock/outgoing', '/warehouses', '/stock/adjustments', '/stock/damaged', '/returns', '/audits', '/stores/requests', '/suppliers', '/notifications'].includes(i.href)
       );
     }
     if (role === 'store_manager') {
       return allNavItems.filter((i) =>
-        ['/dashboard', '/stores', '/stores/requests', '/stores/consumption', '/returns', '/pos-integration', '/reports', '/notifications'].includes(i.href)
+        ['/dashboard', '/stores', '/stores/requests', '/stores/consumption', '/returns', '/pos-integration', '/notifications'].includes(i.href)
       );
     }
     if (['warehouse_staff', 'worker'].includes(role)) {
